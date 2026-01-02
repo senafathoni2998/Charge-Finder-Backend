@@ -9,6 +9,7 @@ const User = require("../models/user");
 
 const signup = async (req: Request, res: Response, next: NextFunction) => {
   const errors = validationResult(req);
+  console.log("Validation Errors:", errors.array());
   if (!errors.isEmpty()) {
     return next(
       new HttpError("Invalid inputs passed, please check your data.", 422)
@@ -47,7 +48,7 @@ const signup = async (req: Request, res: Response, next: NextFunction) => {
   try {
     await newUser.save();
   } catch (err) {
-    return next(new HttpError("Signing up failed, please try again.", 500));
+    return next(new HttpError("Signing up failed, please try again 1.", 500));
   }
 
   let token;
@@ -55,10 +56,10 @@ const signup = async (req: Request, res: Response, next: NextFunction) => {
     token = jwt.sign(
       { userId: newUser.id, email: newUser.email, name: newUser.email },
       process.env.SECRET_KEY,
-      { expiresIn: "1h" }
+      { expiresIn: "1d" }
     );
   } catch (err) {
-    return next(new HttpError("Signing up failed, please try again.", 500));
+    return next(new HttpError("Signing up failed, please try again 2.", 500));
   }
 
   const { password: _, ...userWithoutPassword } = newUser.toObject({

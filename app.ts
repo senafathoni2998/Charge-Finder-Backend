@@ -33,6 +33,18 @@ app.use((req: Request, res: Response, next: NextFunction) => {
   throw error;
 });
 
+app.use((error: any, req: Request, res: Response, next: NextFunction) => {
+  // if (req.file) {
+  //   fs.unlink(req.file.path, (err) => console.log(err));
+  // }
+  if (res.headersSent) {
+    return next(error);
+  }
+  console.log("ERROR CODE", error);
+  res.status(error.code || 500);
+  res.json({ message: error.message || "An unknown error occurred!" });
+});
+
 mongoose
   // .connect(process.env.MONGODB_URI)
   .connect(
