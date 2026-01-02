@@ -1,20 +1,27 @@
+// 🔑 MUST BE FIRST — no imports above this
+import dotenv from "dotenv";
+dotenv.config();
+
+// ---- now safe to import everything else ----
 import type { Request, Response, NextFunction } from "express";
 
-const fs = require("fs");
-const path = require("path");
+import express from "express";
+import bodyParser from "body-parser";
+import mongoose from "mongoose";
 
-const express = require("express");
-const bodyParser = require("body-parser");
-const mongoose = require("mongoose");
+import { connectRedis } from "./session/redis";
+import sessionMiddleware from "./session/session";
+import { authMiddleware } from "./middleware/authMiddleware";
 
 const HttpError = require("./models/http-error");
 const authRoutes = require("./routes/auth-routes");
 
-require("dotenv").config();
-
 const app = express();
 
 app.use(bodyParser.json());
+
+// ✅ session middleware now sees SESSION_SECRET
+app.use(sessionMiddleware);
 
 app.use((req: Request, res: Response, next: NextFunction) => {
   res.setHeader("Access-Control-Allow-Origin", "*");
@@ -28,15 +35,15 @@ app.use((req: Request, res: Response, next: NextFunction) => {
 
 app.use("/api/auth", authRoutes);
 
+// Protect everything below
+app.use(authMiddleware);
+
 app.use((req: Request, res: Response, next: NextFunction) => {
   const error = new HttpError("Could not find this route.", 404);
   throw error;
 });
 
 app.use((error: any, req: Request, res: Response, next: NextFunction) => {
-  // if (req.file) {
-  //   fs.unlink(req.file.path, (err) => console.log(err));
-  // }
   if (res.headersSent) {
     return next(error);
   }
@@ -46,14 +53,15 @@ app.use((error: any, req: Request, res: Response, next: NextFunction) => {
 });
 
 mongoose
-  // .connect(process.env.MONGODB_URI)
   .connect(
-    // `mongodb://${process.env.DB_USER}:${process.env.DB_PASSWORD}@${process.env.DB_HOST}:${process.env.DB_PORT}/${process.env.DB_NAME}?authSource=${process.env.DB_AUTH_SOURCE}`
     `mongodb+srv://${process.env.DB_USER}:${process.env.DB_PASSWORD}@${process.env.DB_HOST}/?appName=${process.env.DB_NAME}`
   )
   .then(() => {
-    app.listen(5000, () => {
-      console.log("Server is running on port 5000");
+    connectRedis().then(() => {
+      console.log("✅ Connected to MongoDB");
+      app.listen(5000, () => {
+        console.log("Server is running on port 5000");
+      });
     });
   })
   .catch((err: Error) => {

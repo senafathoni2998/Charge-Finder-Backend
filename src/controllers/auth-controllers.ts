@@ -68,9 +68,23 @@ const signup = async (req: Request, res: Response, next: NextFunction) => {
 
   const userData = { ...userWithoutPassword, token };
 
-  res
-    .status(201)
-    .json({ message: "User created successfully!", user: userData });
+  req.session.regenerate((err) => {
+    if (err) return res.status(500).json({ message: "Session error" });
+
+    req.session.user = {
+      id: newUser.id,
+      username: newUser.name,
+      role: "user",
+    };
+
+    res
+      .status(201)
+      .json({ message: "User created successfully!", user: userData });
+  });
+
+  //   res
+  //     .status(201)
+  //     .json({ message: "User created successfully!", user: userData });
 };
 
 const login = async (req: Request, res: Response, next: NextFunction) => {
@@ -147,8 +161,22 @@ const login = async (req: Request, res: Response, next: NextFunction) => {
 
   const userData = { ...userWithoutPassword, token };
 
+  req.session.regenerate((err) => {
+    if (err) return res.status(500).json({ message: "Session error" });
+
+    req.session.user = {
+      id: userData.id,
+      username: userData.name,
+      role: "user",
+    };
+
+    res
+      .status(200)
+      .json({ message: "Logged in successfully!", user: userData });
+  });
+
   //* Respond with success message and user data (without password)
-  res.status(200).json({ message: "Logged in successfully!", user: userData });
+  // res.status(200).json({ message: "Logged in successfully!", user: userData });
 };
 
 const logout = async (req: Request, res: Response, next: NextFunction) => {

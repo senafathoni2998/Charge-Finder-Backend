@@ -3,7 +3,7 @@
   "version": "1.0.0",
   "main": "index.js",
   "scripts": {
-    "start": "nodemon --exec ts-node app.ts",
+    "start": "nodemon --exec ts-node --files src/app.ts",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "keywords": [],
@@ -13,7 +13,7 @@
   "dependencies": {
     "bcryptjs": "^3.0.3",
     "body-parser": "^2.2.1",
-    "connect-redis": "^9.0.0",
+    "connect-redis": "^7.1.1",
     "dotenv": "^17.2.3",
     "express": "^5.2.1",
     "express-session": "^1.18.2",
@@ -23,7 +23,9 @@
     "redis": "^5.10.0"
   },
   "devDependencies": {
+    "@types/connect-redis": "^0.0.23",
     "@types/express": "^5.0.6",
+    "@types/express-session": "^1.18.2",
     "@types/node": "^25.0.3",
     "nodemon": "^3.1.11",
     "ts-node": "^10.9.2",
