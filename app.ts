@@ -8,6 +8,7 @@ const bodyParser = require("body-parser");
 const mongoose = require("mongoose");
 
 const HttpError = require("./models/http-error");
+const authRoutes = require("./routes/auth-routes");
 
 require("dotenv").config();
 
@@ -25,6 +26,8 @@ app.use((req: Request, res: Response, next: NextFunction) => {
   next();
 });
 
+app.use("/api/auth", authRoutes);
+
 app.use((req: Request, res: Response, next: NextFunction) => {
   const error = new HttpError("Could not find this route.", 404);
   throw error;
@@ -33,7 +36,8 @@ app.use((req: Request, res: Response, next: NextFunction) => {
 mongoose
   // .connect(process.env.MONGODB_URI)
   .connect(
-    `mongodb://${process.env.DB_USER}:${process.env.DB_PASSWORD}@${process.env.DB_HOST}:${process.env.DB_PORT}/${process.env.DB_NAME}?authSource=${process.env.DB_AUTH_SOURCE}`
+    // `mongodb://${process.env.DB_USER}:${process.env.DB_PASSWORD}@${process.env.DB_HOST}:${process.env.DB_PORT}/${process.env.DB_NAME}?authSource=${process.env.DB_AUTH_SOURCE}`
+    `mongodb+srv://${process.env.DB_USER}:${process.env.DB_PASSWORD}@${process.env.DB_HOST}/?appName=${process.env.DB_NAME}`
   )
   .then(() => {
     app.listen(5000, () => {
