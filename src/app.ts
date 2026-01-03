@@ -15,6 +15,7 @@ import { authMiddleware } from "./middleware/authMiddleware";
 
 const HttpError = require("./models/http-error");
 const authRoutes = require("./routes/auth-routes");
+const profileRoutes = require("./routes/profile-routes");
 
 const app = express();
 
@@ -24,7 +25,9 @@ app.use(bodyParser.json());
 app.use(sessionMiddleware);
 
 app.use((req: Request, res: Response, next: NextFunction) => {
-  res.setHeader("Access-Control-Allow-Origin", "*");
+  // res.setHeader("Access-Control-Allow-Origin", "*");
+  res.setHeader("Access-Control-Allow-Origin", "http://localhost:3000");
+  res.setHeader("Access-Control-Allow-Credentials", "true");
   res.setHeader(
     "Access-Control-Allow-Headers",
     "Origin, X-Requested-With, Content-Type, Accept, Authorization"
@@ -35,8 +38,32 @@ app.use((req: Request, res: Response, next: NextFunction) => {
 
 app.use("/api/auth", authRoutes);
 
+app.get("/debug/cookie", (req, res) => {
+
+
+  res.json({
+    cookieHeader: req.headers.cookie || null,
+    sessionID: req.sessionID || null,
+    session: req.session || null,
+  });
+});
+
+app.get("/debug/whoami", (req, res) => {
+        console.log("AUTH CHECK 1:", {
+    cookie: req.headers.cookie,
+    sessionID: req.sessionID,
+    session: req.session,
+  });
+  res.json({
+    cookieHeader: req.headers.cookie || null,
+    user: req.session?.user || null,
+  });
+});
+
 // Protect everything below
 app.use(authMiddleware);
+
+app.use("/api/profile", profileRoutes);
 
 app.use((req: Request, res: Response, next: NextFunction) => {
   const error = new HttpError("Could not find this route.", 404);
