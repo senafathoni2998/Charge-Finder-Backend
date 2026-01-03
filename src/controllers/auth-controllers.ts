@@ -182,7 +182,13 @@ const login = async (req: Request, res: Response, next: NextFunction) => {
 const logout = async (req: Request, res: Response, next: NextFunction) => {
   // Since JWT is stateless, logout can be handled on the client side by deleting the token.
   // Optionally, you can implement token blacklisting on the server side if needed.
-  res.status(200).json({ message: "Logged out successfully!" });
+  // res.status(200).json({ message: "Logged out successfully!" });
+    req.session.destroy((err) => {
+    if (err) return res.status(500).json({ message: "Logout failed" });
+
+    res.clearCookie("sid");
+    res.status(200).json({ message: "Logged out" });
+  });
 };
 
 exports.signup = signup;
