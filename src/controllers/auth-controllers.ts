@@ -250,7 +250,41 @@ const passwordUpdate = async (req: Request, res: Response, next: NextFunction) =
   res.status(200).json({ message: "Password updated successfully!" });
 };
 
+const profileUpdate = async (req: Request, res: Response, next: NextFunction) => {  
+  // Implementation for profile update
+  const errors = validationResult(req);
+  if (!errors.isEmpty()) {
+    return next(
+      new HttpError("Invalid inputs passed, please check your data.", 422)
+    );
+  }
+
+  const { name, region, email } = req.body;
+  let user;
+  try {
+    user = await User.findOne({ email });
+  } catch (err) {
+    return next(new HttpError("Profile update failed, please try again.", 500));
+  }
+
+  if (!user) {
+    return next(new HttpError("User not found.", 404));
+  }
+
+  user.name = name || user.name;
+  user.region = region || user.region;
+
+  try {
+    await user.save();
+  } catch (err) {
+    return next(new HttpError("Profile update failed, please try again.", 500));
+  }
+
+  res.status(200).json({ message: "Profile updated successfully!" });
+} 
+
 exports.signup = signup;
 exports.login = login;
 exports.logout = logout;
 exports.passwordUpdate = passwordUpdate;
+exports.profileUpdate = profileUpdate;

@@ -14,4 +14,14 @@ router.patch(
   authControllers.passwordUpdate
 );
 
+router.patch(
+  "/update-profile",
+  [
+    check("email").optional().normalizeEmail().isEmail(),
+    check("name").optional().not().isEmpty(),
+    check("region").optional().not().isEmpty(),
+  ],
+  authControllers.profileUpdate
+);
+
 module.exports = router;
