@@ -12,10 +12,12 @@ import mongoose from "mongoose";
 import { connectRedis } from "./session/redis";
 import sessionMiddleware from "./session/session";
 import { authMiddleware } from "./middleware/authMiddleware";
+import vehicle from "./models/vehicle";
 
 const HttpError = require("./models/http-error");
 const authRoutes = require("./routes/auth-routes");
 const profileRoutes = require("./routes/profile-routes");
+const vehicleRoutes = require("./routes/vehicle-routes");
 
 const app = express();
 
@@ -38,32 +40,12 @@ app.use((req: Request, res: Response, next: NextFunction) => {
 
 app.use("/api/auth", authRoutes);
 
-app.get("/debug/cookie", (req, res) => {
-
-
-  res.json({
-    cookieHeader: req.headers.cookie || null,
-    sessionID: req.sessionID || null,
-    session: req.session || null,
-  });
-});
-
-app.get("/debug/whoami", (req, res) => {
-        console.log("AUTH CHECK 1:", {
-    cookie: req.headers.cookie,
-    sessionID: req.sessionID,
-    session: req.session,
-  });
-  res.json({
-    cookieHeader: req.headers.cookie || null,
-    user: req.session?.user || null,
-  });
-});
-
 // Protect everything below
 app.use(authMiddleware);
 
 app.use("/api/profile", profileRoutes);
+
+app.use("/api/vehicles", vehicleRoutes);
 
 app.use((req: Request, res: Response, next: NextFunction) => {
   const error = new HttpError("Could not find this route.", 404);

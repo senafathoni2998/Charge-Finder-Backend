@@ -1,11 +1,13 @@
 import type { Request, Response, NextFunction } from "express";
+import HttpError from "../models/http-error";
+
+import User from "../models/user";
 
 const jwt = require("jsonwebtoken");
 const bcrypt = require("bcryptjs");
 const { validationResult } = require("express-validator");
 
-const HttpError = require("../models/http-error");
-const User = require("../models/user");
+// const User = require("../models/user");
 
 const signup = async (req: Request, res: Response, next: NextFunction) => {
   const errors = validationResult(req);
@@ -100,6 +102,7 @@ const login = async (req: Request, res: Response, next: NextFunction) => {
   const { email, password } = req.body;
 
   let identifiedUser;
+  console.log("Email:", email);
   try {
     // Find the user by email
     identifiedUser = await User.findOne({ email: email });
@@ -160,7 +163,7 @@ const login = async (req: Request, res: Response, next: NextFunction) => {
     getters: true,
   });
 
-  const userData = { ...userWithoutPassword, token };
+  const userData = { id: identifiedUser.id, ...userWithoutPassword, token };
 
   req.session.regenerate((err) => {
     if (err) return res.status(500).json({ message: "Session error" });
