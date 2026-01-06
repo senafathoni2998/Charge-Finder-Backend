@@ -102,7 +102,6 @@ const login = async (req: Request, res: Response, next: NextFunction) => {
   const { email, password } = req.body;
 
   let identifiedUser;
-  console.log("Email:", email);
   try {
     // Find the user by email
     identifiedUser = await User.findOne({ email: email });
@@ -195,99 +194,23 @@ const logout = async (req: Request, res: Response, next: NextFunction) => {
   });
 };
 
-const passwordUpdate = async (req: Request, res: Response, next: NextFunction) => {
-  // Implementation for password update
-  const errors = validationResult(req);
-  if (!errors.isEmpty()) {
-    return next(
-      new HttpError("Invalid inputs passed, please check your data.", 422)
-    );
-  }
-  const { email, currentPassword, newPassword } = req.body;
 
-  let user;
-  try {
-    user = await User.findOne({ email });
-  } catch (err) {
-    return next(new HttpError("Password update failed, please try again.", 500));
-  }
 
-  if (!user) {
-    return next(new HttpError("User not found.", 404));
-  }
-
-  let isValidPassword = false;
-  try {
-    isValidPassword = await bcrypt.compare(currentPassword, user.password);
-  } catch (err) {
-    const error = new HttpError(
-      "Could not update password, please try again",
-      500
-    );
-    return next(error);
-  }
-
-  if (!isValidPassword) {
-    return next(new HttpError("Current password is incorrect.", 401));
-  }
-
-  let hashedNewPassword;
-  try {
-    hashedNewPassword = await bcrypt.hash(newPassword, 12);
-  } catch (err) {
-    const error = new HttpError(
-      "Could not update password, please try again",
-      500
-    );
-    return next(error);
-  }
-
-  user.password = hashedNewPassword;
-
-  try {
-    await user.save();
-  } catch (err) {
-    return next(new HttpError("Password update failed, please try again.", 500));
-  }
-
-  res.status(200).json({ message: "Password updated successfully!" });
+const getSession = (req: Request, res: Response) => {
+  const sessionUser = req.session?.user ?? null;
+  res.status(200).json({
+    sessionId: req.sessionID,
+    user: sessionUser,
+    isLoggedIn: Boolean(sessionUser),
+  });
 };
 
-const profileUpdate = async (req: Request, res: Response, next: NextFunction) => {  
-  // Implementation for profile update
-  const errors = validationResult(req);
-  if (!errors.isEmpty()) {
-    return next(
-      new HttpError("Invalid inputs passed, please check your data.", 422)
-    );
-  }
-
-  const { name, region, email } = req.body;
-  let user;
-  try {
-    user = await User.findOne({ email });
-  } catch (err) {
-    return next(new HttpError("Profile update failed, please try again.", 500));
-  }
-
-  if (!user) {
-    return next(new HttpError("User not found.", 404));
-  }
-
-  user.name = name || user.name;
-  user.region = region || user.region;
-
-  try {
-    await user.save();
-  } catch (err) {
-    return next(new HttpError("Profile update failed, please try again.", 500));
-  }
-
-  res.status(200).json({ message: "Profile updated successfully!" });
-} 
+const getSessionUser = (req: Request) => {
+  return req.session?.user || null;
+};
 
 exports.signup = signup;
 exports.login = login;
 exports.logout = logout;
-exports.passwordUpdate = passwordUpdate;
-exports.profileUpdate = profileUpdate;
+
+exports.getSession = getSession;

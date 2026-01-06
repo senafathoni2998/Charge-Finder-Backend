@@ -6,22 +6,24 @@ import { check } from "express-validator";
 
 const router = express.Router();
 
-const authControllers = require("../controllers/auth-controllers");
+const profileControllers = require("../controllers/profile-controllers");
+
+router.get("/", profileControllers.getProfile);
 
 router.patch(
   "/update-password",
-  [check("email").normalizeEmail().isEmail(), check("currentPassword").not().isEmpty(), check("newPassword").isLength({ min: 6 })],
-  authControllers.passwordUpdate
+  [check("userId").not().isEmpty(), check("currentPassword").not().isEmpty(), check("newPassword").isLength({ min: 6 })],
+  profileControllers.passwordUpdate
 );
 
 router.patch(
   "/update-profile",
   [
-    check("email").optional().normalizeEmail().isEmail(),
+    check("userId").not().isEmpty(),
     check("name").optional().not().isEmpty(),
     check("region").optional().not().isEmpty(),
   ],
-  authControllers.profileUpdate
+  profileControllers.profileUpdate
 );
 
 module.exports = router;

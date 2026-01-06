@@ -8,7 +8,7 @@ const vehicleControllers = require("../controllers/vehicle-controllers");
 router.post(
     "/add-vehicle",
     [
-        check("email").optional().normalizeEmail().isEmail(),
+        check("userId").optional().not().isEmpty(),
         check("name").optional().not().isEmpty(),
         check("connector_type").optional().isArray({ min: 1 }),
         check("connector_type.*").optional().isString().not().isEmpty(),
@@ -16,5 +16,7 @@ router.post(
     ],
     vehicleControllers.addNewVehicle
 );
+
+router.get("/vehicles", vehicleControllers.getVehicles);
 
 module.exports = router;

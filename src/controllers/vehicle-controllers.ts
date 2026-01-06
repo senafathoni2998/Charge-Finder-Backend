@@ -20,11 +20,11 @@ const addNewVehicle = async (
     );
   }
 
-  const { name, connector_type, min_power, email } = req.body;
+  const { name, connector_type, min_power, userId } = req.body;
 
   let user;
   try {
-    user = await User.findOne({ email });
+    user = await User.findById(userId);
   } catch (err) {
     return next(new HttpError("Signing up failed, please try again.", 500));
   }
@@ -59,4 +59,37 @@ const addNewVehicle = async (
     .json({ message: "New vehicle added successfully!", vehicle: newVehicle });
 };
 
-export { addNewVehicle };
+const getVehicles = async (
+  req: Request & { user?: { id: string } },
+  res: Response,
+  next: NextFunction
+) => {
+  if (!req.user) {
+    return next(new HttpError("Authentication required.", 401));
+  }
+
+  const userId = req.user.id;
+
+  let userWithVehicles;
+  try {
+    userWithVehicles = await User.findById(userId).populate("vehicles");
+  } catch (err) {
+    return next(
+      new HttpError("Fetching vehicles failed, please try again later.", 500)
+    );
+  }
+
+  if (!userWithVehicles || userWithVehicles.vehicles.length === 0) {
+    return next(
+      new HttpError("Could not find vehicles for the provided user id.", 404)
+    );
+  }
+
+  res.json({
+    vehicles: userWithVehicles.vehicles.map((vehicle: any) =>
+      vehicle.toObject({ getters: true })
+    ),
+  });
+};
+
+export { addNewVehicle, getVehicles };
