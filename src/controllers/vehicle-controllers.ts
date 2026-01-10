@@ -59,6 +59,74 @@ const addNewVehicle = async (
     .json({ message: "New vehicle added successfully!", vehicle: newVehicle });
 };
 
+const updateVehicle = async (
+  req: Request & { user?: { id: string } },
+  res: Response,
+  next: NextFunction
+) => {
+  const errors = validationResult(req);
+  console.log("Validation Errors:", errors.array());
+  if (!errors.isEmpty()) {
+    return next(
+      new HttpError("Invalid inputs passed, please check your data.", 422)
+    );
+  }
+
+  const { vehicleId, name, connector_type, min_power, userId } = req.body;
+  const sessionUserId = req.user?.id;
+  const effectiveUserId = userId || sessionUserId;
+
+  if (!effectiveUserId) {
+    return next(new HttpError("Authentication required.", 401));
+  }
+
+  if (sessionUserId && userId && sessionUserId !== userId) {
+    return next(new HttpError("Not authorized to update this vehicle.", 403));
+  }
+
+  let vehicle;
+  try {
+    vehicle = await Vehicle.findById(vehicleId);
+  } catch (err) {
+    return next(
+      new HttpError("Updating vehicle failed, please try again.", 500)
+    );
+  }
+
+  if (!vehicle) {
+    return next(new HttpError("Vehicle not found.", 404));
+  }
+
+  if (vehicle.owner.toString() !== effectiveUserId) {
+    return next(new HttpError("Not authorized to update this vehicle.", 403));
+  }
+
+  if (typeof name === "string") {
+    vehicle.name = name;
+  }
+
+  if (Array.isArray(connector_type)) {
+    vehicle.connector_type = connector_type;
+  }
+
+  if (min_power !== undefined) {
+    vehicle.min_power = min_power;
+  }
+
+  try {
+    await vehicle.save();
+  } catch (err) {
+    return next(
+      new HttpError("Updating vehicle failed, please try again.", 500)
+    );
+  }
+
+  res.status(200).json({
+    message: "Vehicle updated successfully!",
+    vehicle: vehicle.toObject({ getters: true }),
+  });
+};
+
 const getVehicles = async (
   req: Request & { user?: { id: string } },
   res: Response,
@@ -92,4 +160,4 @@ const getVehicles = async (
   });
 };
 
-export { addNewVehicle, getVehicles };
+export { addNewVehicle, getVehicles, updateVehicle };

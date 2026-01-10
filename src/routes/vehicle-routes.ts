@@ -17,6 +17,19 @@ router.post(
     vehicleControllers.addNewVehicle
 );
 
+router.patch(
+    "/update-vehicle",
+    [
+        check("vehicleId").not().isEmpty(),
+        check("userId").optional().not().isEmpty(),
+        check("name").optional().not().isEmpty(),
+        check("connector_type").optional().isArray({ min: 1 }),
+        check("connector_type.*").optional().isString().not().isEmpty(),
+        check("min_power").optional().not().isEmpty(),
+    ],
+    vehicleControllers.updateVehicle
+);
+
 router.get("/", vehicleControllers.getVehicles);
 
 module.exports = router;
