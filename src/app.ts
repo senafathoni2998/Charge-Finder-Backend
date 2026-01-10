@@ -18,6 +18,7 @@ const HttpError = require("./models/http-error");
 const authRoutes = require("./routes/auth-routes");
 const profileRoutes = require("./routes/profile-routes");
 const vehicleRoutes = require("./routes/vehicle-routes");
+const stationRoutes = require("./routes/station-routes");
 
 const app = express();
 
@@ -46,6 +47,8 @@ app.use(authMiddleware);
 app.use("/api/profile", profileRoutes);
 
 app.use("/api/vehicles", vehicleRoutes);
+
+app.use("/api/stations", stationRoutes);
 
 app.use((req: Request, res: Response, next: NextFunction) => {
   const error = new HttpError("Could not find this route.", 404);
