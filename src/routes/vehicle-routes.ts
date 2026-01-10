@@ -30,6 +30,22 @@ router.patch(
     vehicleControllers.updateVehicle
 );
 
+router.patch(
+    "/set-active-vehicle",
+    [
+        check("vehicleId").not().isEmpty(),
+        check("userId").optional().not().isEmpty(),
+        check("active").optional().isBoolean().toBoolean(),
+    ],
+    vehicleControllers.setActiveVehicle
+);
+
+router.delete(
+    "/delete-vehicle",
+    [check("vehicleId").not().isEmpty(), check("userId").optional().not().isEmpty()],
+    vehicleControllers.deleteVehicle
+);
+
 router.get("/", vehicleControllers.getVehicles);
 
 module.exports = router;
