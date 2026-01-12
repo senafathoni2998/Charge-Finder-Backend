@@ -13,6 +13,7 @@ import { connectRedis } from "./session/redis";
 import sessionMiddleware from "./session/session";
 import { authMiddleware } from "./middleware/authMiddleware";
 import vehicle from "./models/vehicle";
+import { ensureAdminUser } from "./startup/ensure-admin";
 
 const HttpError = require("./models/http-error");
 const authRoutes = require("./routes/auth-routes");
@@ -69,8 +70,9 @@ mongoose
     `mongodb+srv://${process.env.DB_USER}:${process.env.DB_PASSWORD}@${process.env.DB_HOST}/?appName=${process.env.DB_NAME}`
   )
   .then(() => {
-    connectRedis().then(() => {
+    connectRedis().then(async () => {
       console.log("✅ Connected to MongoDB");
+      await ensureAdminUser();
       app.listen(5000, () => {
         console.log("Server is running on port 5000");
       });
