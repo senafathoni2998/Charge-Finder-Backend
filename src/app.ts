@@ -15,8 +15,7 @@ import { authMiddleware } from "./middleware/authMiddleware";
 import vehicle from "./models/vehicle";
 import { ensureAdminUser } from "./startup/ensure-admin";
 import { ensureStationsSeeded } from "./startup/ensure-stations";
-
-const HttpError = require("./models/http-error");
+import HttpError from "./models/http-error";
 const authRoutes = require("./routes/auth-routes");
 const adminRoutes = require("./routes/admin-routes");
 const profileRoutes = require("./routes/profile-routes");
