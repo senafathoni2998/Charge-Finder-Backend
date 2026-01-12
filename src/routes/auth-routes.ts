@@ -42,3 +42,4 @@ router.get("/session", authControllers.getSession);
 // router.post("/me", authControllers.getMe);
 
 module.exports = router;
+export {};

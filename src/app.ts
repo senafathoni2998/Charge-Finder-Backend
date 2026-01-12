@@ -18,6 +18,7 @@ import { ensureStationsSeeded } from "./startup/ensure-stations";
 
 const HttpError = require("./models/http-error");
 const authRoutes = require("./routes/auth-routes");
+const adminRoutes = require("./routes/admin-routes");
 const profileRoutes = require("./routes/profile-routes");
 const vehicleRoutes = require("./routes/vehicle-routes");
 const stationRoutes = require("./routes/station-routes");
@@ -45,6 +46,8 @@ app.use("/api/auth", authRoutes);
 
 // Protect everything below
 app.use(authMiddleware);
+
+app.use("/api/admin", adminRoutes);
 
 app.use("/api/profile", profileRoutes);
 
