@@ -14,6 +14,7 @@ import sessionMiddleware from "./session/session";
 import { authMiddleware } from "./middleware/authMiddleware";
 import vehicle from "./models/vehicle";
 import { ensureAdminUser } from "./startup/ensure-admin";
+import { ensureStationsSeeded } from "./startup/ensure-stations";
 
 const HttpError = require("./models/http-error");
 const authRoutes = require("./routes/auth-routes");
@@ -73,6 +74,7 @@ mongoose
     connectRedis().then(async () => {
       console.log("✅ Connected to MongoDB");
       await ensureAdminUser();
+      await ensureStationsSeeded();
       app.listen(5000, () => {
         console.log("Server is running on port 5000");
       });
