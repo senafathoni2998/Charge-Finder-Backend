@@ -1,5 +1,6 @@
 const express = require("express");
 const { check } = require("express-validator");
+const { adminMiddleware } = require("../middleware/authMiddleware");
 
 const router = express.Router();
 
@@ -21,6 +22,17 @@ router.post(
     check("password").isLength({ min: 6 }),
   ],
   authControllers.signup
+);
+
+router.post(
+  "/admin/signup",
+  adminMiddleware,
+  [
+    check("name").not().isEmpty(),
+    check("email").normalizeEmail().isEmail(),
+    check("password").isLength({ min: 6 }),
+  ],
+  authControllers.createAdmin
 );
 
 router.post("/logout", authControllers.logout);

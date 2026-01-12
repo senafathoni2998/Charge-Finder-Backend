@@ -91,6 +91,60 @@ const signup = async (req: Request, res: Response, next: NextFunction) => {
   //     .json({ message: "User created successfully!", user: userData });
 };
 
+const createAdmin = async (req: Request, res: Response, next: NextFunction) => {
+  const errors = validationResult(req);
+  if (!errors.isEmpty()) {
+    return next(
+      new HttpError("Invalid inputs passed, please check your data.", 422)
+    );
+  }
+
+  const { name, email, password, region } = req.body;
+
+  let existingUser;
+  try {
+    existingUser = await User.findOne({ email });
+  } catch (err) {
+    return next(new HttpError("Creating admin failed, please try again.", 500));
+  }
+
+  if (existingUser) {
+    return next(new HttpError("User exists already.", 422));
+  }
+
+  let hashedPassword;
+  try {
+    hashedPassword = await bcrypt.hash(password, 12);
+  } catch (err) {
+    return next(
+      new HttpError("Could not create admin, please try again.", 500)
+    );
+  }
+
+  const newAdmin = new User({
+    name,
+    email,
+    password: hashedPassword,
+    region: region || "",
+    role: "admin",
+  });
+
+  try {
+    await newAdmin.save();
+  } catch (err) {
+    return next(new HttpError("Creating admin failed, please try again.", 500));
+  }
+
+  const { password: _, ...userWithoutPassword } = newAdmin.toObject({
+    getters: true,
+  });
+
+  res.status(201).json({
+    message: "Admin created successfully!",
+    user: userWithoutPassword,
+  });
+};
+
 const login = async (req: Request, res: Response, next: NextFunction) => {
   const errors = validationResult(req);
   if (!errors.isEmpty()) {
@@ -213,5 +267,6 @@ const getSessionUser = (req: Request) => {
 exports.signup = signup;
 exports.login = login;
 exports.logout = logout;
+exports.createAdmin = createAdmin;
 
 exports.getSession = getSession;
