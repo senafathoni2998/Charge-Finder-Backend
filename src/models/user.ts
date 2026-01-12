@@ -6,6 +6,7 @@ const userSchema = new Schema({
   region: { type: String },
   email: { type: String, required: true, unique: true },
   password: { type: String, required: true, minlength: 6 },
+  role: { type: String, enum: ["admin", "user"], default: "user" },
   vehicles: [{ type: Types.ObjectId, ref: "Vehicle" }],
 });
 

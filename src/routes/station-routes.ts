@@ -1,5 +1,6 @@
 import express from "express";
 import { check } from "express-validator";
+import { adminMiddleware } from "../middleware/authMiddleware";
 
 const router = express.Router();
 
@@ -7,6 +8,7 @@ const stationControllers = require("../controllers/station-controllers");
 
 router.post(
   "/add-station",
+  adminMiddleware,
   [
     check("name").not().isEmpty(),
     check("lat").not().isEmpty(),
@@ -33,6 +35,7 @@ router.post(
 
 router.patch(
   "/update-station",
+  adminMiddleware,
   [
     check("stationId").not().isEmpty(),
     check("name").optional().not().isEmpty(),

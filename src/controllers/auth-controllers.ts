@@ -46,6 +46,7 @@ const signup = async (req: Request, res: Response, next: NextFunction) => {
     email,
     password: hashedPassword,
     region: region || "",
+    role: "user",
   });
 
   try {
@@ -77,7 +78,7 @@ const signup = async (req: Request, res: Response, next: NextFunction) => {
     req.session.user = {
       id: newUser.id,
       username: newUser.name,
-      role: "user",
+      role: newUser.role ?? "user",
     };
 
     res
@@ -170,7 +171,7 @@ const login = async (req: Request, res: Response, next: NextFunction) => {
     req.session.user = {
       id: userData.id,
       username: userData.name,
-      role: "user",
+      role: identifiedUser.role ?? "user",
     };
 
     res
