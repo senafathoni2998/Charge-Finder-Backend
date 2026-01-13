@@ -154,6 +154,44 @@ const updateStation = async (
   });
 };
 
+const deleteStation = async (
+  req: Request,
+  res: Response,
+  next: NextFunction
+) => {
+  const errors = validationResult(req);
+  if (!errors.isEmpty()) {
+    return next(
+      new HttpError("Invalid inputs passed, please check your data.", 422)
+    );
+  }
+
+  const { stationId } = req.body;
+
+  let station;
+  try {
+    station = await Station.findById(stationId);
+  } catch (err) {
+    return next(
+      new HttpError("Deleting station failed, please try again.", 500)
+    );
+  }
+
+  if (!station) {
+    return next(new HttpError("Station not found.", 404));
+  }
+
+  try {
+    await station.deleteOne();
+  } catch (err) {
+    return next(
+      new HttpError("Deleting station failed, please try again.", 500)
+    );
+  }
+
+  res.status(200).json({ message: "Station deleted successfully!" });
+};
+
 const getStations = async (
   req: Request,
   res: Response,
@@ -177,4 +215,4 @@ const getStations = async (
   });
 };
 
-export { addStation, updateStation, getStations };
+export { addStation, updateStation, deleteStation, getStations };

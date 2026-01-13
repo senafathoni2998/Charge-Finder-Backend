@@ -8,6 +8,19 @@ const router = express.Router();
 
 router.get("/users", adminMiddleware, adminControllers.getUsers);
 
+router.post(
+  "/users",
+  adminMiddleware,
+  [
+    check("name").not().isEmpty(),
+    check("email").normalizeEmail().isEmail(),
+    check("password").isLength({ min: 6 }),
+    check("region").optional().not().isEmpty(),
+    check("role").optional().isIn(["admin", "user"]),
+  ],
+  adminControllers.createUser
+);
+
 router.patch(
   "/users/:userId",
   adminMiddleware,
@@ -20,6 +33,13 @@ router.patch(
     check("password").optional().isLength({ min: 6 }),
   ],
   adminControllers.updateUser
+);
+
+router.delete(
+  "/users/:userId",
+  adminMiddleware,
+  [param("userId").not().isEmpty()],
+  adminControllers.deleteUser
 );
 
 module.exports = router;

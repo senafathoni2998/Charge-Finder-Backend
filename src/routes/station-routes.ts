@@ -63,6 +63,13 @@ router.patch(
   stationControllers.updateStation
 );
 
+router.delete(
+  "/delete-station",
+  adminMiddleware,
+  [check("stationId").not().isEmpty()],
+  stationControllers.deleteStation
+);
+
 router.get("/", stationControllers.getStations);
 
 module.exports = router;
