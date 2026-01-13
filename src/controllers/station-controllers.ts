@@ -1,8 +1,11 @@
 import { Request, Response, NextFunction } from "express";
 import { validationResult } from "express-validator";
+import mongoose from "mongoose";
 
 import HttpError from "../models/http-error";
 import Station from "../models/station";
+import User from "../models/user";
+import ChargingTicket from "../models/charging-ticket";
 
 const addStation = async (
   req: Request,
@@ -154,6 +157,127 @@ const updateStation = async (
   });
 };
 
+const requestChargingTicket = async (
+  req: Request & { user?: { id: string } },
+  res: Response,
+  next: NextFunction
+) => {
+  const errors = validationResult(req);
+  if (!errors.isEmpty()) {
+    return next(
+      new HttpError("Invalid inputs passed, please check your data.", 422)
+    );
+  }
+
+  const { stationId, connectorType } = req.body;
+  const sessionUserId = req.user?.id;
+
+  if (!sessionUserId) {
+    return next(new HttpError("Authentication required.", 401));
+  }
+
+  let station;
+  try {
+    station = await Station.findById(stationId);
+  } catch (err) {
+    return next(
+      new HttpError("Requesting ticket failed, please try again.", 500)
+    );
+  }
+
+  if (!station) {
+    return next(new HttpError("Station not found.", 404));
+  }
+
+  if (
+    typeof connectorType === "string" &&
+    !station.connectors.some((connector: { type: string }) => {
+      return connector.type === connectorType;
+    })
+  ) {
+    return next(
+      new HttpError(
+        "Requested connector type is not available at this station.",
+        422
+      )
+    );
+  }
+
+  let user;
+  try {
+    user = await User.findById(sessionUserId);
+  } catch (err) {
+    return next(
+      new HttpError("Requesting ticket failed, please try again.", 500)
+    );
+  }
+
+  if (!user) {
+    return next(new HttpError("User not found.", 404));
+  }
+
+  const newTicket = new ChargingTicket({
+    station: station._id,
+    user: user._id,
+    connectorType,
+  });
+
+  try {
+    const sess = await mongoose.startSession();
+    sess.startTransaction();
+    await newTicket.save({ session: sess });
+    user.tickets.push(newTicket._id);
+    await user.save({ session: sess });
+    await sess.commitTransaction();
+  } catch (err) {
+    return next(
+      new HttpError("Requesting ticket failed, please try again.", 500)
+    );
+  }
+
+  res.status(201).json({
+    message: "Charging ticket requested successfully!",
+    ticket: newTicket.toObject({ getters: true }),
+  });
+};
+
+const getActiveTicketForStation = async (
+  req: Request & { user?: { id: string } },
+  res: Response,
+  next: NextFunction
+) => {
+  const errors = validationResult(req);
+  if (!errors.isEmpty()) {
+    return next(
+      new HttpError("Invalid inputs passed, please check your data.", 422)
+    );
+  }
+
+  const { stationId } = req.params;
+  const sessionUserId = req.user?.id;
+
+  if (!sessionUserId) {
+    return next(new HttpError("Authentication required.", 401));
+  }
+
+  let activeTicket;
+  try {
+    activeTicket = await ChargingTicket.findOne({
+      station: stationId,
+      user: sessionUserId,
+      status: { $in: ["REQUESTED", "PAID"] },
+    }).sort({ createdAt: -1 });
+  } catch (err) {
+    return next(
+      new HttpError("Fetching ticket failed, please try again.", 500)
+    );
+  }
+
+  res.status(200).json({
+    ticket: activeTicket ? activeTicket.toObject({ getters: true }) : null,
+  });
+};
+
 const deleteStation = async (
   req: Request,
   res: Response,
@@ -215,4 +339,11 @@ const getStations = async (
   });
 };
 
-export { addStation, updateStation, deleteStation, getStations };
+export {
+  addStation,
+  updateStation,
+  requestChargingTicket,
+  getActiveTicketForStation,
+  deleteStation,
+  getStations,
+};

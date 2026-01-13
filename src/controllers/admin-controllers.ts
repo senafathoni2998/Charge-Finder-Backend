@@ -6,6 +6,7 @@ import mongoose from "mongoose";
 import HttpError from "../models/http-error";
 import User from "../models/user";
 import Vehicle from "../models/vehicle";
+import ChargingTicket from "../models/charging-ticket";
 
 const getUsers = async (req: Request, res: Response, next: NextFunction) => {
   try {
@@ -172,6 +173,7 @@ const deleteUser = async (req: Request, res: Response, next: NextFunction) => {
     const sess = await mongoose.startSession();
     sess.startTransaction();
     await Vehicle.deleteMany({ owner: userId }).session(sess);
+    await ChargingTicket.deleteMany({ user: userId }).session(sess);
     await user.deleteOne({ session: sess });
     await sess.commitTransaction();
   } catch (err) {

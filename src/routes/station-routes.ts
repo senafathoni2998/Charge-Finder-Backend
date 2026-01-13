@@ -63,6 +63,21 @@ router.patch(
   stationControllers.updateStation
 );
 
+router.post(
+  "/request-ticket",
+  [
+    check("stationId").not().isEmpty(),
+    check("connectorType").optional().isIn(["CCS2", "Type2", "CHAdeMO"]),
+  ],
+  stationControllers.requestChargingTicket
+);
+
+router.get(
+  "/:stationId/active-ticket",
+  [check("stationId").not().isEmpty()],
+  stationControllers.getActiveTicketForStation
+);
+
 router.delete(
   "/delete-station",
   adminMiddleware,
