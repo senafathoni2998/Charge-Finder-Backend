@@ -30,14 +30,41 @@ app.use(bodyParser.json());
 app.use(sessionMiddleware);
 
 app.use((req: Request, res: Response, next: NextFunction) => {
-  // res.setHeader("Access-Control-Allow-Origin", "*");
-  res.setHeader("Access-Control-Allow-Origin", "http://localhost:3000");
+  const origin = req.headers.origin;
+  const allowedOrigins = [
+    ...(process.env.CORS_ORIGINS?.split(",") ?? []),
+    process.env.CORS_ORIGIN ?? "",
+    "http://localhost:3000",
+    "http://localhost:5173",
+    "http://127.0.0.1:3000",
+    "http://127.0.0.1:5173",
+  ]
+    .map((value) => value.trim())
+    .filter(Boolean);
+
+  const isDev = process.env.NODE_ENV !== "production";
+
+  if (origin && (isDev || allowedOrigins.includes(origin))) {
+    res.setHeader("Access-Control-Allow-Origin", origin);
+    res.setHeader("Vary", "Origin");
+  }
   res.setHeader("Access-Control-Allow-Credentials", "true");
+  const requestHeaders = req.headers["access-control-request-headers"];
   res.setHeader(
     "Access-Control-Allow-Headers",
-    "Origin, X-Requested-With, Content-Type, Accept, Authorization"
+    typeof requestHeaders === "string"
+      ? requestHeaders
+      : "Origin, X-Requested-With, Content-Type, Accept, Authorization"
   );
-  res.setHeader("Access-Control-Allow-Methods", "GET, POST, PATCH, DELETE");
+  res.setHeader(
+    "Access-Control-Allow-Methods",
+    "GET, POST, PATCH, DELETE, OPTIONS"
+  );
+
+  if (req.method === "OPTIONS") {
+    return res.sendStatus(204);
+  }
+
   next();
 });
 
