@@ -6,6 +6,16 @@ import HttpError from "../models/http-error";
 import Station from "../models/station";
 import User from "../models/user";
 import ChargingTicket from "../models/charging-ticket";
+import {
+  broadcastChargingProgress,
+  buildChargingProgressKey,
+  clearChargingProgressTimer,
+  ensureChargingProgressTimer,
+} from "../realtime/charging-progress";
+import {
+  calculateChargingProgressPercent,
+  finalizeChargingTicket,
+} from "../services/charging-ticket-service";
 
 const addStation = async (
   req: Request,
@@ -273,8 +283,273 @@ const getActiveTicketForStation = async (
     );
   }
 
+  if (
+    activeTicket?.chargingStatus === "IN_PROGRESS" &&
+    activeTicket.startedAt
+  ) {
+    const progressPercent = calculateChargingProgressPercent(
+      activeTicket.startedAt
+    );
+
+    if (progressPercent >= 100) {
+      const completedAt = new Date();
+      const completedTicket = {
+        ...activeTicket.toObject({ getters: true }),
+        progressPercent: 100,
+        chargingStatus: "COMPLETED",
+        completedAt,
+      };
+
+      try {
+        await finalizeChargingTicket(activeTicket.id, sessionUserId);
+        clearChargingProgressTimer(activeTicket.id);
+        broadcastChargingProgress(
+          buildChargingProgressKey(sessionUserId, stationId),
+          {
+            type: "completed",
+            ticket: null,
+            completedTicket,
+          }
+        );
+        activeTicket = null;
+      } catch (err) {
+        // If completion fails, fall back to returning the ticket.
+      }
+    } else {
+      activeTicket.progressPercent = progressPercent;
+      ensureChargingProgressTimer(activeTicket);
+    }
+  }
+
   res.status(200).json({
     ticket: activeTicket ? activeTicket.toObject({ getters: true }) : null,
+  });
+};
+
+const startCharging = async (
+  req: Request & { user?: { id: string } },
+  res: Response,
+  next: NextFunction
+) => {
+  const errors = validationResult(req);
+  if (!errors.isEmpty()) {
+    return next(
+      new HttpError("Invalid inputs passed, please check your data.", 422)
+    );
+  }
+
+  const { stationId } = req.body;
+  const sessionUserId = req.user?.id;
+
+  if (!sessionUserId) {
+    return next(new HttpError("Authentication required.", 401));
+  }
+
+  let ticket;
+  try {
+    ticket = await ChargingTicket.findOne({
+      station: stationId,
+      user: sessionUserId,
+      status: { $in: ["REQUESTED", "PAID"] },
+    }).sort({ createdAt: -1 });
+  } catch (err) {
+    return next(
+      new HttpError("Starting charging failed, please try again.", 500)
+    );
+  }
+
+  if (!ticket) {
+    return next(new HttpError("Active ticket not found.", 404));
+  }
+
+  ticket.chargingStatus = "IN_PROGRESS";
+  ticket.startedAt = ticket.startedAt ?? new Date();
+  ticket.completedAt = undefined;
+  ticket.progressPercent = 0;
+
+  try {
+    await ticket.save();
+  } catch (err) {
+    return next(
+      new HttpError("Starting charging failed, please try again.", 500)
+    );
+  }
+
+  broadcastChargingProgress(buildChargingProgressKey(sessionUserId, stationId), {
+    type: "started",
+    ticket: ticket.toObject({ getters: true }),
+  });
+
+  ensureChargingProgressTimer(ticket);
+
+  res.status(200).json({
+    message: "Charging started successfully!",
+    ticket: ticket.toObject({ getters: true }),
+  });
+};
+
+const updateChargingProgress = async (
+  req: Request & { user?: { id: string } },
+  res: Response,
+  next: NextFunction
+) => {
+  const errors = validationResult(req);
+  if (!errors.isEmpty()) {
+    return next(
+      new HttpError("Invalid inputs passed, please check your data.", 422)
+    );
+  }
+
+  const { stationId } = req.body;
+  const sessionUserId = req.user?.id;
+
+  if (!sessionUserId) {
+    return next(new HttpError("Authentication required.", 401));
+  }
+
+  let ticket;
+  try {
+    ticket = await ChargingTicket.findOne({
+      station: stationId,
+      user: sessionUserId,
+      status: { $in: ["REQUESTED", "PAID"] },
+    }).sort({ createdAt: -1 });
+  } catch (err) {
+    return next(
+      new HttpError("Updating charging progress failed, please try again.", 500)
+    );
+  }
+
+  if (!ticket) {
+    return next(new HttpError("Active ticket not found.", 404));
+  }
+
+  ticket.chargingStatus = "IN_PROGRESS";
+  if (!ticket.startedAt) {
+    ticket.startedAt = new Date();
+  }
+
+  const progressPercent = calculateChargingProgressPercent(ticket.startedAt);
+
+  if (progressPercent >= 100) {
+    const completedAt = new Date();
+    const completedTicket = {
+      ...ticket.toObject({ getters: true }),
+      progressPercent: 100,
+      chargingStatus: "COMPLETED",
+      completedAt,
+    };
+
+    try {
+      await finalizeChargingTicket(ticket.id, sessionUserId);
+      clearChargingProgressTimer(ticket.id);
+    } catch (err) {
+      return next(
+        new HttpError(
+          "Completing charging failed, please try again.",
+          500
+        )
+      );
+    }
+
+    broadcastChargingProgress(
+      buildChargingProgressKey(sessionUserId, stationId),
+      {
+        type: "completed",
+        ticket: null,
+        completedTicket,
+      }
+    );
+
+    return res.status(200).json({
+      message: "Charging completed and ticket cleared successfully!",
+    });
+  }
+
+  ticket.progressPercent = progressPercent;
+
+  try {
+    await ticket.save();
+  } catch (err) {
+    return next(
+      new HttpError("Updating charging progress failed, please try again.", 500)
+    );
+  }
+
+  broadcastChargingProgress(buildChargingProgressKey(sessionUserId, stationId), {
+    type: "progress",
+    ticket: ticket.toObject({ getters: true }),
+  });
+
+  ensureChargingProgressTimer(ticket);
+
+  res.status(200).json({
+    message: "Charging progress updated successfully!",
+    ticket: ticket.toObject({ getters: true }),
+  });
+};
+
+const completeCharging = async (
+  req: Request & { user?: { id: string } },
+  res: Response,
+  next: NextFunction
+) => {
+  const errors = validationResult(req);
+  if (!errors.isEmpty()) {
+    return next(
+      new HttpError("Invalid inputs passed, please check your data.", 422)
+    );
+  }
+
+  const { stationId } = req.body;
+  const sessionUserId = req.user?.id;
+
+  if (!sessionUserId) {
+    return next(new HttpError("Authentication required.", 401));
+  }
+
+  let ticket;
+  try {
+    ticket = await ChargingTicket.findOne({
+      station: stationId,
+      user: sessionUserId,
+      status: { $in: ["REQUESTED", "PAID"] },
+    }).sort({ createdAt: -1 });
+  } catch (err) {
+    return next(
+      new HttpError("Completing charging failed, please try again.", 500)
+    );
+  }
+
+  if (!ticket) {
+    return next(new HttpError("Active ticket not found.", 404));
+  }
+
+  const completedAt = new Date();
+  const ticketSnapshot = {
+    ...ticket.toObject({ getters: true }),
+    progressPercent: 100,
+    chargingStatus: "COMPLETED",
+    completedAt,
+  };
+
+  try {
+    await finalizeChargingTicket(ticket.id, sessionUserId);
+    clearChargingProgressTimer(ticket.id);
+  } catch (err) {
+    return next(
+      new HttpError("Completing charging failed, please try again.", 500)
+    );
+  }
+
+  broadcastChargingProgress(buildChargingProgressKey(sessionUserId, stationId), {
+    type: "completed",
+    ticket: null,
+    completedTicket: ticketSnapshot,
+  });
+
+  res.status(200).json({
+    message: "Charging completed and ticket cleared successfully!",
   });
 };
 
@@ -344,6 +619,9 @@ export {
   updateStation,
   requestChargingTicket,
   getActiveTicketForStation,
+  startCharging,
+  updateChargingProgress,
+  completeCharging,
   deleteStation,
   getStations,
 };

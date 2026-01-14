@@ -13,7 +13,6 @@ const addNewVehicle = async (
 ) => {
   // Implementation for adding a new vehicle
   const errors = validationResult(req);
-  console.log("Validation Errors:", errors.array());
   if (!errors.isEmpty()) {
     return next(
       new HttpError("Invalid inputs passed, please check your data.", 422)
@@ -291,4 +290,10 @@ const getVehicles = async (
   });
 };
 
-export { addNewVehicle, getVehicles, updateVehicle, setActiveVehicle, deleteVehicle };
+export {
+  addNewVehicle,
+  getVehicles,
+  updateVehicle,
+  setActiveVehicle,
+  deleteVehicle,
+};

@@ -10,6 +10,14 @@ const chargingTicketSchema = new Schema(
       enum: ["REQUESTED", "PAID", "CANCELLED"],
       default: "REQUESTED",
     },
+    chargingStatus: {
+      type: String,
+      enum: ["NOT_STARTED", "IN_PROGRESS", "COMPLETED"],
+      default: "NOT_STARTED",
+    },
+    progressPercent: { type: Number, min: 0, max: 100, default: 0 },
+    startedAt: { type: Date },
+    completedAt: { type: Date },
   },
   { timestamps: true }
 );

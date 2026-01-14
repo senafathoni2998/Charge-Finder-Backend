@@ -20,13 +20,15 @@
     "express-validator": "^7.3.1",
     "jsonwebtoken": "^9.0.3",
     "mongoose": "^9.1.1",
-    "redis": "^5.10.0"
+    "redis": "^5.10.0",
+    "ws": "^8.19.0"
   },
   "devDependencies": {
     "@types/connect-redis": "^0.0.23",
     "@types/express": "^5.0.6",
     "@types/express-session": "^1.18.2",
     "@types/node": "^25.0.3",
+    "@types/ws": "^8.18.1",
     "nodemon": "^3.1.11",
     "ts-node": "^10.9.2",
     "typescript": "^5.9.3"

@@ -7,11 +7,13 @@ import type { Request, Response, NextFunction } from "express";
 
 import express from "express";
 import bodyParser from "body-parser";
+import http from "http";
 import mongoose from "mongoose";
 
 import { connectRedis } from "./session/redis";
 import sessionMiddleware from "./session/session";
 import { authMiddleware } from "./middleware/authMiddleware";
+import { initChargingProgressWebSocketServer } from "./realtime/charging-progress";
 import vehicle from "./models/vehicle";
 import { ensureAdminUser } from "./startup/ensure-admin";
 import { ensureStationsSeeded } from "./startup/ensure-stations";
@@ -23,11 +25,14 @@ const vehicleRoutes = require("./routes/vehicle-routes");
 const stationRoutes = require("./routes/station-routes");
 
 const app = express();
+const server = http.createServer(app);
 
 app.use(bodyParser.json());
 
 // ✅ session middleware now sees SESSION_SECRET
 app.use(sessionMiddleware);
+
+initChargingProgressWebSocketServer(server, sessionMiddleware);
 
 app.use((req: Request, res: Response, next: NextFunction) => {
   const origin = req.headers.origin;
@@ -104,7 +109,7 @@ mongoose
       console.log("✅ Connected to MongoDB");
       await ensureAdminUser();
       await ensureStationsSeeded();
-      app.listen(5000, () => {
+      server.listen(5000, () => {
         console.log("Server is running on port 5000");
       });
     });

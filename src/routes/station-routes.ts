@@ -72,6 +72,27 @@ router.post(
   stationControllers.requestChargingTicket
 );
 
+router.post(
+  "/start-charging",
+  [check("stationId").not().isEmpty()],
+  stationControllers.startCharging
+);
+
+router.patch(
+  "/charging-progress",
+  [
+    check("stationId").not().isEmpty(),
+    check("progressPercent").optional().isFloat({ min: 0, max: 100 }).toFloat(),
+  ],
+  stationControllers.updateChargingProgress
+);
+
+router.post(
+  "/complete-charging",
+  [check("stationId").not().isEmpty()],
+  stationControllers.completeCharging
+);
+
 router.get(
   "/:stationId/active-ticket",
   [check("stationId").not().isEmpty()],
