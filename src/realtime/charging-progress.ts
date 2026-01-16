@@ -4,7 +4,7 @@ import { WebSocketServer, WebSocket } from "ws";
 
 import ChargingTicket from "../models/charging-ticket";
 import {
-  appendChargingEstimate,
+  buildChargingTicketPayload,
   calculateChargingProgressPercent,
   finalizeChargingTicket,
 } from "../services/charging-ticket-service";
@@ -70,14 +70,14 @@ export const broadcastChargingProgress = (
   }
 };
 
-const updateTicketProgressSnapshot = (
-  snapshot: Record<string, unknown>,
+const updateTicketProgressSnapshot = <T extends Record<string, unknown>>(
+  snapshot: T,
   progressPercent: number
 ) => {
   return {
     ...snapshot,
     progressPercent,
-    chargingStatus: "IN_PROGRESS",
+    chargingStatus: "IN_PROGRESS" as const,
   };
 };
 
@@ -109,74 +109,82 @@ export const ensureChargingProgressTimer = (ticket: any) => {
     return;
   }
 
-  const startedAt = new Date(ticket.startedAt);
-  let ticketSnapshot = ticket.toObject
-    ? ticket.toObject({ getters: true })
-    : { ...ticket };
-  ticketSnapshot = appendChargingEstimate(ticketSnapshot, startedAt);
+  void (async () => {
+    const startedAt = new Date(ticket.startedAt);
+    const initialSnapshot = await buildChargingTicketPayload(ticket, {
+      userId,
+      stationId,
+    });
 
-  const key = buildChargingProgressKey(userId, stationId);
-
-  const tick = async () => {
-    const progressPercent = calculateChargingProgressPercent(startedAt);
-
-    if (progressPercent >= 100) {
-      const completedAt = new Date();
-      const completedTicket = {
-        ...ticketSnapshot,
-        progressPercent: 100,
-        chargingStatus: "COMPLETED",
-        completedAt,
-      };
-
-      try {
-        await finalizeChargingTicket(ticketId, userId);
-        broadcastChargingProgress(key, {
-          type: "completed",
-          ticket: null,
-          completedTicket,
-        });
-        clearChargingProgressTimer(ticketId);
-        return;
-      } catch (err) {
-        return;
-      }
+    if (!initialSnapshot) {
+      return;
     }
 
-    ticketSnapshot = updateTicketProgressSnapshot(
-      ticketSnapshot,
-      progressPercent
-    );
+    let ticketSnapshot = initialSnapshot;
 
-    try {
-      const result = await ChargingTicket.updateOne(
-        { _id: ticketId },
-        {
-          $set: {
-            chargingStatus: "IN_PROGRESS",
-            progressPercent,
-            startedAt,
-          },
+    const key = buildChargingProgressKey(userId, stationId);
+
+    const tick = async () => {
+      const progressPercent = calculateChargingProgressPercent(startedAt);
+
+      if (progressPercent >= 100) {
+        const completedAt = new Date();
+        const completedTicket = {
+          ...ticketSnapshot,
+          progressPercent: 100,
+          chargingStatus: "COMPLETED",
+          completedAt,
+        };
+
+        try {
+          await finalizeChargingTicket(ticketId, userId);
+          broadcastChargingProgress(key, {
+            type: "completed",
+            ticket: null,
+            completedTicket,
+          });
+          clearChargingProgressTimer(ticketId);
+          return;
+        } catch (err) {
+          return;
         }
+      }
+
+      ticketSnapshot = updateTicketProgressSnapshot(
+        ticketSnapshot,
+        progressPercent
       );
 
-      if (result.matchedCount === 0) {
-        clearChargingProgressTimer(ticketId);
-        return;
+      try {
+        const result = await ChargingTicket.updateOne(
+          { _id: ticketId },
+          {
+            $set: {
+              chargingStatus: "IN_PROGRESS",
+              progressPercent,
+              startedAt,
+            },
+          }
+        );
+
+        if (result.matchedCount === 0) {
+          clearChargingProgressTimer(ticketId);
+          return;
+        }
+      } catch (err) {
+        // Ignore transient failures; the next tick will retry.
       }
-    } catch (err) {
-      // Ignore transient failures; the next tick will retry.
-    }
 
-    broadcastChargingProgress(key, {
-      type: "progress",
-      ticket: ticketSnapshot,
-    });
-  };
+      broadcastChargingProgress(key, {
+        type: "progress",
+        ticket: ticketSnapshot,
+      });
+    };
 
-  const intervalId = setInterval(tick, CHARGING_PROGRESS_TICK_MS);
-  chargingTimers.set(ticketId, intervalId);
-  void tick();
+    const intervalId = setInterval(tick, CHARGING_PROGRESS_TICK_MS);
+    chargingTimers.set(ticketId, intervalId);
+    void tick();
+  })();
 };
 
 const parseStationId = (request: IncomingMessage) => {
@@ -271,8 +279,12 @@ export const initChargingProgressWebSocketServer = (
 
       if (progressPercent >= 100) {
         const completedAt = new Date();
+        const completedPayload = await buildChargingTicketPayload(activeTicket, {
+          userId: user.id,
+          stationId,
+        });
         const completedTicket = {
-          ...activeTicket.toObject({ getters: true }),
+          ...(completedPayload ?? activeTicket.toObject({ getters: true })),
           progressPercent: 100,
           chargingStatus: "COMPLETED",
           completedAt,
@@ -296,10 +308,10 @@ export const initChargingProgressWebSocketServer = (
     }
 
     const initialTicket = activeTicket
-      ? appendChargingEstimate(
-          activeTicket.toObject({ getters: true }),
-          activeTicket.startedAt
-        )
+      ? await buildChargingTicketPayload(activeTicket, {
+          userId: user.id,
+          stationId,
+        })
       : null;
 
     if (ws.readyState === WebSocket.OPEN) {

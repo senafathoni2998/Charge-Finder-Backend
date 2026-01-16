@@ -14,6 +14,7 @@ import { connectRedis } from "./session/redis";
 import sessionMiddleware from "./session/session";
 import { authMiddleware } from "./middleware/authMiddleware";
 import { initChargingProgressWebSocketServer } from "./realtime/charging-progress";
+import { getStations } from "./controllers/station-controllers";
 import vehicle from "./models/vehicle";
 import { ensureAdminUser } from "./startup/ensure-admin";
 import { ensureStationsSeeded } from "./startup/ensure-stations";
@@ -74,6 +75,9 @@ app.use((req: Request, res: Response, next: NextFunction) => {
 });
 
 app.use("/api/auth", authRoutes);
+
+// Public stations list (no login required).
+app.get("/api/stations", getStations);
 
 // Protect everything below
 app.use(authMiddleware);

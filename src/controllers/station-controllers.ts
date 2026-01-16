@@ -13,7 +13,7 @@ import {
   ensureChargingProgressTimer,
 } from "../realtime/charging-progress";
 import {
-  appendChargingEstimate,
+  buildChargingTicketPayload,
   calculateChargingProgressPercent,
   finalizeChargingTicket,
 } from "../services/charging-ticket-service";
@@ -294,8 +294,12 @@ const getActiveTicketForStation = async (
 
     if (progressPercent >= 100) {
       const completedAt = new Date();
+      const completedPayload = await buildChargingTicketPayload(activeTicket, {
+        userId: sessionUserId,
+        stationId,
+      });
       const completedTicket = {
-        ...activeTicket.toObject({ getters: true }),
+        ...(completedPayload ?? activeTicket.toObject({ getters: true })),
         progressPercent: 100,
         chargingStatus: "COMPLETED",
         completedAt,
@@ -323,10 +327,10 @@ const getActiveTicketForStation = async (
   }
 
   const ticketPayload = activeTicket
-    ? appendChargingEstimate(
-        activeTicket.toObject({ getters: true }),
-        activeTicket.startedAt
-      )
+    ? await buildChargingTicketPayload(activeTicket, {
+        userId: sessionUserId,
+        stationId,
+      })
     : null;
 
   res.status(200).json({
@@ -383,10 +387,10 @@ const startCharging = async (
     );
   }
 
-  const ticketPayload = appendChargingEstimate(
-    ticket.toObject({ getters: true }),
-    ticket.startedAt
-  );
+  const ticketPayload = await buildChargingTicketPayload(ticket, {
+    userId: sessionUserId,
+    stationId,
+  });
 
   broadcastChargingProgress(buildChargingProgressKey(sessionUserId, stationId), {
     type: "started",
@@ -446,8 +450,12 @@ const updateChargingProgress = async (
 
   if (progressPercent >= 100) {
     const completedAt = new Date();
+    const completedPayload = await buildChargingTicketPayload(ticket, {
+      userId: sessionUserId,
+      stationId,
+    });
     const completedTicket = {
-      ...ticket.toObject({ getters: true }),
+      ...(completedPayload ?? ticket.toObject({ getters: true })),
       progressPercent: 100,
       chargingStatus: "COMPLETED",
       completedAt,
@@ -489,10 +497,10 @@ const updateChargingProgress = async (
     );
   }
 
-  const ticketPayload = appendChargingEstimate(
-    ticket.toObject({ getters: true }),
-    ticket.startedAt
-  );
+  const ticketPayload = await buildChargingTicketPayload(ticket, {
+    userId: sessionUserId,
+    stationId,
+  });
 
   broadcastChargingProgress(buildChargingProgressKey(sessionUserId, stationId), {
     type: "progress",
@@ -544,8 +552,12 @@ const completeCharging = async (
   }
 
   const completedAt = new Date();
+  const completedPayload = await buildChargingTicketPayload(ticket, {
+    userId: sessionUserId,
+    stationId,
+  });
   const ticketSnapshot = {
-    ...ticket.toObject({ getters: true }),
+    ...(completedPayload ?? ticket.toObject({ getters: true })),
     progressPercent: 100,
     chargingStatus: "COMPLETED",
     completedAt,
@@ -610,10 +622,12 @@ const deleteStation = async (
 };
 
 const getStations = async (
-  req: Request,
+  req: Request & { user?: { id: string } },
   res: Response,
   next: NextFunction
 ) => {
+  const sessionUserId = req.user?.id ?? req.session?.user?.id;
+
   let stations;
   try {
     stations = await Station.find();
@@ -627,8 +641,69 @@ const getStations = async (
     return next(new HttpError("Could not find stations.", 404));
   }
 
+  const chargingStationIds = new Set<string>();
+
+  if (sessionUserId) {
+    try {
+      const chargingTickets = await ChargingTicket.find(
+        {
+          user: sessionUserId,
+          status: { $in: ["REQUESTED", "PAID"] },
+          chargingStatus: "IN_PROGRESS",
+        },
+        { station: 1 }
+      ).lean();
+
+      for (const ticket of chargingTickets) {
+        const stationId =
+          ticket.station?.toString?.() ?? ticket.station?.id ?? ticket.station;
+        if (stationId) {
+          chargingStationIds.add(stationId.toString());
+        }
+      }
+    } catch (err) {
+      return next(
+        new HttpError(
+          "Fetching charging status failed, please try again later.",
+          500
+        )
+      );
+    }
+  }
+
+  const resolveStationId = (snapshot: Record<string, unknown>) => {
+    const stationId = snapshot.id;
+    if (typeof stationId === "string") {
+      return stationId;
+    }
+
+    const rawId = snapshot._id;
+    if (typeof rawId === "string") {
+      return rawId;
+    }
+
+    if (rawId && typeof (rawId as { toString?: () => string }).toString === "function") {
+      return (rawId as { toString: () => string }).toString();
+    }
+
+    return null;
+  };
+
+  const stationsPayload = stations.map((station) => {
+    const stationSnapshot = station.toObject({ getters: true }) as Record<
+      string,
+      unknown
+    >;
+    const stationId = resolveStationId(stationSnapshot);
+
+    return {
+      ...stationSnapshot,
+      isChargingHere: stationId ? chargingStationIds.has(stationId) : false,
+    };
+  });
+
   res.json({
-    stations: stations.map((station) => station.toObject({ getters: true })),
+    stations: stationsPayload,
   });
 };
 
