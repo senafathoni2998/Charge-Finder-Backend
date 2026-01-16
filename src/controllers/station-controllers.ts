@@ -1018,6 +1018,46 @@ const getStations = async (
 ) => {
   const sessionUserId = req.user?.id ?? req.session?.user?.id;
 
+  const normalizeQueryValue = (value: unknown) => {
+    return Array.isArray(value) ? value[0] : value;
+  };
+
+  const parseQueryNumber = (value: unknown) => {
+    const normalized = normalizeQueryValue(value);
+    if (typeof normalized !== "string" && typeof normalized !== "number") {
+      return null;
+    }
+
+    const parsed = Number(normalized);
+    return Number.isFinite(parsed) ? parsed : null;
+  };
+
+  const userLat = parseQueryNumber(req.query.lat);
+  const userLng = parseQueryNumber(req.query.lng);
+  const radiusKm = parseQueryNumber(req.query.radiusKm);
+  const limit = parseQueryNumber(req.query.limit);
+
+  if ((userLat !== null && userLng === null) || (userLng !== null && userLat === null)) {
+    return next(
+      new HttpError("Both lat and lng query params are required.", 422)
+    );
+  }
+
+  const hasLocation = userLat !== null && userLng !== null;
+  if (hasLocation) {
+    if (userLat < -90 || userLat > 90 || userLng < -180 || userLng > 180) {
+      return next(new HttpError("Invalid location coordinates.", 422));
+    }
+  }
+
+  if (radiusKm !== null && radiusKm < 0) {
+    return next(new HttpError("Invalid radiusKm value.", 422));
+  }
+
+  if (limit !== null && limit <= 0) {
+    return next(new HttpError("Invalid limit value.", 422));
+  }
+
   let stations;
   try {
     stations = await Station.find();
@@ -1082,18 +1122,71 @@ const getStations = async (
     return null;
   };
 
-  const stationsPayload = stations.map((station) => {
+  const toRadians = (value: number) => (value * Math.PI) / 180;
+  const calculateDistanceKm = (
+    lat1: number,
+    lng1: number,
+    lat2: number,
+    lng2: number
+  ) => {
+    const earthRadiusKm = 6371;
+    const dLat = toRadians(lat2 - lat1);
+    const dLng = toRadians(lng2 - lng1);
+    const a =
+      Math.sin(dLat / 2) ** 2 +
+      Math.cos(toRadians(lat1)) *
+        Math.cos(toRadians(lat2)) *
+        Math.sin(dLng / 2) ** 2;
+    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+    return Math.round(earthRadiusKm * c * 100) / 100;
+  };
+
+  type StationPayload = Record<string, unknown> & {
+    distanceKm?: number;
+    isChargingHere: boolean;
+  };
+
+  let stationsPayload: StationPayload[] = stations.map((station) => {
     const stationSnapshot = station.toObject({ getters: true }) as Record<
       string,
       unknown
     >;
     const stationId = resolveStationId(stationSnapshot);
+    const stationLat =
+      typeof stationSnapshot.lat === "number" ? stationSnapshot.lat : null;
+    const stationLng =
+      typeof stationSnapshot.lng === "number" ? stationSnapshot.lng : null;
+    const distanceKm =
+      hasLocation && stationLat !== null && stationLng !== null
+        ? calculateDistanceKm(userLat as number, userLng as number, stationLat, stationLng)
+        : undefined;
 
     return {
       ...stationSnapshot,
       isChargingHere: stationId ? chargingStationIds.has(stationId) : false,
+      ...(hasLocation && distanceKm !== undefined ? { distanceKm } : {}),
     };
   });
+
+  if (hasLocation) {
+    stationsPayload = stationsPayload.filter(
+      (station) => typeof station.distanceKm === "number"
+    );
+
+    if (radiusKm !== null) {
+      stationsPayload = stationsPayload.filter(
+        (station) => (station.distanceKm ?? 0) <= radiusKm
+      );
+    }
+
+    stationsPayload.sort(
+      (a, b) => (a.distanceKm ?? 0) - (b.distanceKm ?? 0)
+    );
+
+    if (limit !== null) {
+      stationsPayload = stationsPayload.slice(0, Math.floor(limit));
+    }
+  }
 
   res.json({
     stations: stationsPayload,
