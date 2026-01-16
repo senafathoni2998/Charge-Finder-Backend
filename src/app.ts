@@ -18,6 +18,7 @@ import { getStationById, getStations } from "./controllers/station-controllers";
 import vehicle from "./models/vehicle";
 import { ensureAdminUser } from "./startup/ensure-admin";
 import { ensureStationsSeeded } from "./startup/ensure-stations";
+import { ensureVehicleBatteryDefaults } from "./services/vehicle-battery-service";
 import HttpError from "./models/http-error";
 const authRoutes = require("./routes/auth-routes");
 const adminRoutes = require("./routes/admin-routes");
@@ -114,6 +115,11 @@ mongoose
       console.log("✅ Connected to MongoDB");
       await ensureAdminUser();
       await ensureStationsSeeded();
+      try {
+        await ensureVehicleBatteryDefaults();
+      } catch (err) {
+        console.error("Failed to init vehicle batteries:", err);
+      }
       server.listen(5000, () => {
         console.log("Server is running on port 5000");
       });

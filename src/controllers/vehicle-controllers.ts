@@ -5,6 +5,10 @@ import HttpError from "../models/http-error";
 import Vehicle from "../models/vehicle";
 import User from "../models/user";
 import mongoose from "mongoose";
+import {
+  refreshVehicleBatterySnapshot,
+  refreshVehicleBatterySnapshots,
+} from "../services/vehicle-battery-service";
 
 const addNewVehicle = async (
   req: Request,
@@ -168,14 +172,38 @@ const setActiveVehicle = async (
     return next(new HttpError("Not authorized to update this vehicle.", 403));
   }
 
-  vehicle.active = typeof active === "boolean" ? active : true;
+  const nextActive = typeof active === "boolean" ? active : true;
 
-  try {
-    await vehicle.save();
-  } catch (err) {
-    return next(
-      new HttpError("Updating vehicle failed, please try again.", 500)
-    );
+  if (nextActive) {
+    const sess = await mongoose.startSession();
+    sess.startTransaction();
+    try {
+      await Vehicle.updateMany(
+        { owner: effectiveUserId, _id: { $ne: vehicle._id }, active: true },
+        { $set: { active: false } },
+        { session: sess }
+      );
+      vehicle.active = true;
+      vehicle.lastBatteryUpdatedAt = new Date();
+      await vehicle.save({ session: sess });
+      await sess.commitTransaction();
+    } catch (err) {
+      await sess.abortTransaction();
+      return next(
+        new HttpError("Updating vehicle failed, please try again.", 500)
+      );
+    } finally {
+      sess.endSession();
+    }
+  } else {
+    vehicle.active = false;
+    try {
+      await vehicle.save();
+    } catch (err) {
+      return next(
+        new HttpError("Updating vehicle failed, please try again.", 500)
+      );
+    }
   }
 
   res.status(200).json({
@@ -283,10 +311,16 @@ const getVehicles = async (
     );
   }
 
+  const vehicleSnapshots = userWithVehicles.vehicles.map((vehicle: any) =>
+    vehicle.toObject({ getters: true })
+  );
+
+  const refreshedVehicles = await refreshVehicleBatterySnapshots(
+    vehicleSnapshots
+  );
+
   res.json({
-    vehicles: userWithVehicles.vehicles.map((vehicle: any) =>
-      vehicle.toObject({ getters: true })
-    ),
+    vehicles: refreshedVehicles,
   });
 };
 
@@ -325,8 +359,11 @@ const getVehicleById = async (
     return next(new HttpError("Not authorized to view this vehicle.", 403));
   }
 
+  const vehicleSnapshot = vehicle.toObject({ getters: true });
+  const refreshedVehicle = await refreshVehicleBatterySnapshot(vehicleSnapshot);
+
   res.status(200).json({
-    vehicle: vehicle.toObject({ getters: true }),
+    vehicle: refreshedVehicle ?? vehicleSnapshot,
   });
 };
 

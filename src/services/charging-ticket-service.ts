@@ -4,6 +4,7 @@ import ChargingTicket from "../models/charging-ticket";
 import Station from "../models/station";
 import User from "../models/user";
 import Vehicle from "../models/vehicle";
+import { refreshVehicleBatterySnapshot } from "./vehicle-battery-service";
 
 export const CHARGING_DURATION_MS = 5 * 60 * 1000;
 
@@ -164,11 +165,12 @@ export const buildChargingTicketPayload = async (
       ? fetchVehicleSnapshot(ticketVehicleId)
       : fetchActiveVehicleSnapshot(userId),
   ]);
+  const hydratedVehicleInfo = await refreshVehicleBatterySnapshot(vehicleInfo);
 
   return {
     ...ticketSnapshot,
     stationInfo,
-    vehicleInfo,
+    vehicleInfo: hydratedVehicleInfo,
   };
 };
 
@@ -186,7 +188,7 @@ export const setVehicleChargingStatus = async (
   const options = session ? { session } : undefined;
   const result = await Vehicle.updateOne(
     { _id: vehicleId },
-    { $set: { chargingStatus } },
+    { $set: { chargingStatus, lastBatteryUpdatedAt: new Date() } },
     options
   );
 
@@ -205,7 +207,7 @@ export const setActiveVehicleChargingStatus = async (
   const options = session ? { session } : undefined;
   const result = await Vehicle.updateOne(
     { owner: userId, active: true },
-    { $set: { chargingStatus } },
+    { $set: { chargingStatus, lastBatteryUpdatedAt: new Date() } },
     options
   );
 
@@ -223,7 +225,7 @@ export const clearChargingStatusForUserVehicles = async (
   const options = session ? { session } : undefined;
   await Vehicle.updateMany(
     { owner: userId, chargingStatus: "CHARGING" },
-    { $set: { chargingStatus: "IDLE" } },
+    { $set: { chargingStatus: "IDLE", lastBatteryUpdatedAt: new Date() } },
     options
   );
 };
