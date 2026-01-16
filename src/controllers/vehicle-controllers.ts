@@ -290,9 +290,50 @@ const getVehicles = async (
   });
 };
 
+const getVehicleById = async (
+  req: Request & { user?: { id: string } },
+  res: Response,
+  next: NextFunction
+) => {
+  const errors = validationResult(req);
+  if (!errors.isEmpty()) {
+    return next(
+      new HttpError("Invalid inputs passed, please check your data.", 422)
+    );
+  }
+
+  if (!req.user) {
+    return next(new HttpError("Authentication required.", 401));
+  }
+
+  const { vehicleId } = req.params;
+
+  let vehicle;
+  try {
+    vehicle = await Vehicle.findById(vehicleId);
+  } catch (err) {
+    return next(
+      new HttpError("Fetching vehicle failed, please try again later.", 500)
+    );
+  }
+
+  if (!vehicle) {
+    return next(new HttpError("Vehicle not found.", 404));
+  }
+
+  if (vehicle.owner.toString() !== req.user.id) {
+    return next(new HttpError("Not authorized to view this vehicle.", 403));
+  }
+
+  res.status(200).json({
+    vehicle: vehicle.toObject({ getters: true }),
+  });
+};
+
 export {
   addNewVehicle,
   getVehicles,
+  getVehicleById,
   updateVehicle,
   setActiveVehicle,
   deleteVehicle,

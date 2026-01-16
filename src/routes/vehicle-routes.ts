@@ -46,6 +46,12 @@ router.delete(
     vehicleControllers.deleteVehicle
 );
 
+router.get(
+    "/:vehicleId",
+    [check("vehicleId").not().isEmpty()],
+    vehicleControllers.getVehicleById
+);
+
 router.get("/", vehicleControllers.getVehicles);
 
 module.exports = router;
