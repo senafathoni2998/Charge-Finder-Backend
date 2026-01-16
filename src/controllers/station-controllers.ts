@@ -707,6 +707,66 @@ const getStations = async (
   });
 };
 
+const getStationById = async (
+  req: Request & { user?: { id: string } },
+  res: Response,
+  next: NextFunction
+) => {
+  const errors = validationResult(req);
+  if (!errors.isEmpty()) {
+    return next(
+      new HttpError("Invalid inputs passed, please check your data.", 422)
+    );
+  }
+
+  const { stationId } = req.params;
+  const sessionUserId = req.user?.id ?? req.session?.user?.id;
+
+  let station;
+  try {
+    station = await Station.findById(stationId);
+  } catch (err) {
+    return next(
+      new HttpError("Fetching station failed, please try again later.", 500)
+    );
+  }
+
+  if (!station) {
+    return next(new HttpError("Station not found.", 404));
+  }
+
+  let isChargingHere = false;
+  if (sessionUserId) {
+    try {
+      const chargingTicket = await ChargingTicket.findOne(
+        {
+          user: sessionUserId,
+          station: stationId,
+          status: { $in: ["REQUESTED", "PAID"] },
+          chargingStatus: "IN_PROGRESS",
+        },
+        { _id: 1 }
+      ).lean();
+
+      isChargingHere = Boolean(chargingTicket);
+    } catch (err) {
+      return next(
+        new HttpError(
+          "Fetching charging status failed, please try again later.",
+          500
+        )
+      );
+    }
+  }
+
+  res.status(200).json({
+    station: {
+      ...station.toObject({ getters: true }),
+      isChargingHere,
+    },
+  });
+};
+
 export {
   addStation,
   updateStation,
@@ -717,4 +777,5 @@ export {
   completeCharging,
   deleteStation,
   getStations,
+  getStationById,
 };
