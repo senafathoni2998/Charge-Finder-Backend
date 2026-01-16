@@ -4,16 +4,33 @@ import ChargingTicket from "../models/charging-ticket";
 import Station from "../models/station";
 import User from "../models/user";
 import Vehicle from "../models/vehicle";
-import { refreshVehicleBatterySnapshot } from "./vehicle-battery-service";
+import {
+  calculateBatteryStatus,
+  refreshVehicleBatterySnapshot,
+} from "./vehicle-battery-service";
 
 export const CHARGING_DURATION_MS = 5 * 60 * 1000;
+export const CHARGING_PERCENT_INTERVAL_MS = 30 * 1000;
+
+const clampBatteryPercent = (value: number) => {
+  if (!Number.isFinite(value)) {
+    return 0;
+  }
+
+  return Math.min(100, Math.max(0, Math.round(value)));
+};
 
 export const calculateChargingProgressPercent = (
   startedAt: Date | null | undefined,
-  nowMs = Date.now()
+  nowMs = Date.now(),
+  durationMs = CHARGING_DURATION_MS
 ) => {
   if (!startedAt) {
     return 0;
+  }
+
+  if (!Number.isFinite(durationMs) || durationMs <= 0) {
+    return 100;
   }
 
   const elapsedMs = nowMs - startedAt.getTime();
@@ -21,12 +38,13 @@ export const calculateChargingProgressPercent = (
     return 0;
   }
 
-  const percent = (elapsedMs / CHARGING_DURATION_MS) * 100;
+  const percent = (elapsedMs / durationMs) * 100;
   return Math.min(100, Math.max(0, Math.round(percent)));
 };
 
 export const calculateEstimatedCompletionAt = (
-  startedAt: Date | null | undefined
+  startedAt: Date | null | undefined,
+  durationMs = CHARGING_DURATION_MS
 ) => {
   if (!startedAt) {
     return null;
@@ -37,14 +55,18 @@ export const calculateEstimatedCompletionAt = (
     return null;
   }
 
-  return new Date(startedAtMs + CHARGING_DURATION_MS);
+  return new Date(startedAtMs + durationMs);
 };
 
 export const appendChargingEstimate = (
   ticketSnapshot: Record<string, unknown>,
-  startedAt: Date | null | undefined
+  startedAt: Date | null | undefined,
+  durationMs = CHARGING_DURATION_MS
 ) => {
-  const estimatedCompletionAt = calculateEstimatedCompletionAt(startedAt);
+  const estimatedCompletionAt = calculateEstimatedCompletionAt(
+    startedAt,
+    durationMs
+  );
   if (!estimatedCompletionAt) {
     return ticketSnapshot;
   }
@@ -52,6 +74,89 @@ export const appendChargingEstimate = (
   return {
     ...ticketSnapshot,
     estimatedCompletionAt,
+  };
+};
+
+export const calculateChargingDurationMs = (
+  batteryPercent: number | null | undefined
+) => {
+  if (typeof batteryPercent !== "number" || !Number.isFinite(batteryPercent)) {
+    return CHARGING_DURATION_MS;
+  }
+
+  const normalizedPercent = clampBatteryPercent(batteryPercent);
+  return Math.max(0, (100 - normalizedPercent) * CHARGING_PERCENT_INTERVAL_MS);
+};
+
+export const calculateChargingBatteryPercentage = (
+  progressPercent: number,
+  startingBatteryPercent: number
+) => {
+  const normalizedProgress = clampBatteryPercent(progressPercent);
+  const normalizedStart = clampBatteryPercent(startingBatteryPercent);
+  const remaining = 100 - normalizedStart;
+  const estimatedPercent = normalizedStart + (remaining * normalizedProgress) / 100;
+  return clampBatteryPercent(estimatedPercent);
+};
+
+const resolveBatteryPercentFromVehicleInfo = (vehicleInfo: unknown) => {
+  if (!vehicleInfo || typeof vehicleInfo !== "object") {
+    return null;
+  }
+
+  const rawPercent = (vehicleInfo as { batteryPercent?: unknown })
+    .batteryPercent;
+  if (typeof rawPercent !== "number" || !Number.isFinite(rawPercent)) {
+    return null;
+  }
+
+  return clampBatteryPercent(rawPercent);
+};
+
+const resolveStartingBatteryPercent = (
+  snapshot: Record<string, unknown>,
+  vehicleInfo?: Record<string, unknown> | null
+) => {
+  const rawStartingPercent = (snapshot as { startingBatteryPercent?: unknown })
+    .startingBatteryPercent;
+  if (
+    typeof rawStartingPercent === "number" &&
+    Number.isFinite(rawStartingPercent)
+  ) {
+    return clampBatteryPercent(rawStartingPercent);
+  }
+
+  return resolveBatteryPercentFromVehicleInfo(
+    vehicleInfo ?? (snapshot as { vehicleInfo?: unknown }).vehicleInfo
+  );
+};
+
+export const appendChargingBatteryPercentage = <
+  T extends Record<string, unknown>
+>(
+  snapshot: T,
+  progressPercent: number | null | undefined,
+  vehicleInfo?: Record<string, unknown> | null
+): T & { batteryPercentage?: number } => {
+  if (typeof progressPercent !== "number" || !Number.isFinite(progressPercent)) {
+    return snapshot;
+  }
+
+  const startingBatteryPercent = resolveStartingBatteryPercent(
+    snapshot,
+    vehicleInfo
+  );
+
+  if (startingBatteryPercent === null) {
+    return snapshot;
+  }
+
+  return {
+    ...snapshot,
+    batteryPercentage: calculateChargingBatteryPercentage(
+      progressPercent,
+      startingBatteryPercent
+    ),
   };
 };
 
@@ -92,6 +197,38 @@ const resolveId = (value: any): string | null => {
   }
 
   return null;
+};
+
+export const updateVehicleBatteryPercentage = async (
+  vehicleId: unknown,
+  batteryPercent: number | null | undefined,
+  session?: mongoose.ClientSession
+) => {
+  const resolvedVehicleId = resolveId(vehicleId);
+  if (
+    !resolvedVehicleId ||
+    typeof batteryPercent !== "number" ||
+    !Number.isFinite(batteryPercent)
+  ) {
+    return { ok: false };
+  }
+
+  const normalizedPercent = clampBatteryPercent(batteryPercent);
+  const batteryStatus = calculateBatteryStatus(normalizedPercent);
+  const options = session ? { session } : undefined;
+  const result = await Vehicle.updateOne(
+    { _id: resolvedVehicleId },
+    {
+      $set: {
+        batteryPercent: normalizedPercent,
+        batteryStatus,
+        lastBatteryUpdatedAt: new Date(),
+      },
+    },
+    options
+  );
+
+  return { ok: result.matchedCount > 0, batteryPercent: normalizedPercent };
 };
 
 const fetchStationSnapshot = async (
@@ -141,6 +278,60 @@ const fetchVehicleSnapshot = async (
   }
 };
 
+export const resolveChargingDurationMsFromSnapshot = (
+  snapshot: Record<string, unknown>,
+  vehicleInfo?: Record<string, unknown> | null
+) => {
+  const rawDuration = snapshot.chargingDurationMs;
+  if (typeof rawDuration === "number" && Number.isFinite(rawDuration)) {
+    return Math.max(0, rawDuration);
+  }
+
+  const batteryPercent = resolveStartingBatteryPercent(snapshot, vehicleInfo);
+
+  if (batteryPercent !== null) {
+    return calculateChargingDurationMs(batteryPercent);
+  }
+
+  return CHARGING_DURATION_MS;
+};
+
+export const resolveChargingDurationMsForTicket = async (ticket: any) => {
+  if (!ticket) {
+    return CHARGING_DURATION_MS;
+  }
+
+  const rawDuration = ticket.chargingDurationMs;
+  if (typeof rawDuration === "number" && Number.isFinite(rawDuration)) {
+    return Math.max(0, rawDuration);
+  }
+
+  const rawStartingPercent = ticket.startingBatteryPercent;
+  if (
+    typeof rawStartingPercent === "number" &&
+    Number.isFinite(rawStartingPercent)
+  ) {
+    return calculateChargingDurationMs(rawStartingPercent);
+  }
+
+  const vehicleId = resolveId(ticket.vehicle);
+  if (!vehicleId) {
+    return CHARGING_DURATION_MS;
+  }
+
+  try {
+    const vehicle = await Vehicle.findById(vehicleId, {
+      batteryPercent: 1,
+    }).lean();
+    if (!vehicle || typeof vehicle.batteryPercent !== "number") {
+      return CHARGING_DURATION_MS;
+    }
+    return calculateChargingDurationMs(vehicle.batteryPercent);
+  } catch (err) {
+    return CHARGING_DURATION_MS;
+  }
+};
+
 export const buildChargingTicketPayload = async (
   ticket: any,
   options: { userId?: string; stationId?: string } = {}
@@ -153,7 +344,6 @@ export const buildChargingTicketPayload = async (
   const startedAtValue =
     ticket.startedAt ?? (ticketSnapshot as { startedAt?: unknown }).startedAt;
   const startedAt = startedAtValue ? new Date(startedAtValue as Date) : null;
-  ticketSnapshot = appendChargingEstimate(ticketSnapshot, startedAt);
 
   const userId = options.userId ?? resolveId(ticket.user);
   const stationId = options.stationId ?? resolveId(ticket.station);
@@ -166,6 +356,18 @@ export const buildChargingTicketPayload = async (
       : fetchActiveVehicleSnapshot(userId),
   ]);
   const hydratedVehicleInfo = await refreshVehicleBatterySnapshot(vehicleInfo);
+  const durationMs = resolveChargingDurationMsFromSnapshot(
+    ticketSnapshot,
+    hydratedVehicleInfo
+  );
+  ticketSnapshot = appendChargingEstimate(ticketSnapshot, startedAt, durationMs);
+  ticketSnapshot = appendChargingBatteryPercentage(
+    ticketSnapshot,
+    typeof ticketSnapshot.progressPercent === "number"
+      ? ticketSnapshot.progressPercent
+      : null,
+    hydratedVehicleInfo
+  );
 
   return {
     ...ticketSnapshot,

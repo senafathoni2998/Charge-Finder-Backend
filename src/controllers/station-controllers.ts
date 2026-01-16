@@ -15,11 +15,15 @@ import {
 } from "../realtime/charging-progress";
 import {
   adjustStationConnectorAvailability,
+  appendChargingBatteryPercentage,
   buildChargingTicketPayload,
+  calculateChargingDurationMs,
   calculateChargingProgressPercent,
   setVehicleChargingStatus,
   setActiveVehicleChargingStatus,
   finalizeChargingTicket,
+  resolveChargingDurationMsForTicket,
+  updateVehicleBatteryPercentage,
 } from "../services/charging-ticket-service";
 
 const addStation = async (
@@ -308,8 +312,12 @@ const getActiveTicketForStation = async (
     activeTicket?.chargingStatus === "IN_PROGRESS" &&
     activeTicket.startedAt
   ) {
+    const chargingDurationMs =
+      await resolveChargingDurationMsForTicket(activeTicket);
     const progressPercent = calculateChargingProgressPercent(
-      activeTicket.startedAt
+      activeTicket.startedAt,
+      Date.now(),
+      chargingDurationMs
     );
 
     if (progressPercent >= 100) {
@@ -318,16 +326,35 @@ const getActiveTicketForStation = async (
         userId: sessionUserId,
         stationId,
       });
-      const completedTicket = {
-        ...(completedPayload ?? activeTicket.toObject({ getters: true })),
-        progressPercent: 100,
-        chargingStatus: "COMPLETED",
-        completedAt,
-      };
+      const completedTicket = appendChargingBatteryPercentage(
+        {
+          ...(completedPayload ?? activeTicket.toObject({ getters: true })),
+          progressPercent: 100,
+          chargingStatus: "COMPLETED",
+          completedAt,
+        },
+        100
+      );
+      const ticketVehicleId =
+        activeTicket.vehicle?.toString?.() ??
+        activeTicket.vehicle?.id ??
+        activeTicket.vehicle;
+      const completedBatteryPercentage = (
+        completedTicket as { batteryPercentage?: number }
+      ).batteryPercentage;
 
       try {
         await finalizeChargingTicket(activeTicket.id, sessionUserId);
         clearChargingProgressTimer(activeTicket.id);
+        if (
+          ticketVehicleId &&
+          typeof completedBatteryPercentage === "number"
+        ) {
+          void updateVehicleBatteryPercentage(
+            ticketVehicleId,
+            completedBatteryPercentage
+          ).catch(() => {});
+        }
         broadcastChargingProgress(
           buildChargingProgressKey(sessionUserId, stationId),
           {
@@ -412,6 +439,7 @@ const startCharging = async (
   }
 
   let selectedVehicleId: string | null = null;
+  let selectedVehicleBatteryPercent: number | null = null;
   if (typeof vehicleId === "string") {
     let vehicle;
     try {
@@ -430,6 +458,8 @@ const startCharging = async (
     }
 
     selectedVehicleId = vehicle._id.toString();
+    selectedVehicleBatteryPercent =
+      typeof vehicle.batteryPercent === "number" ? vehicle.batteryPercent : null;
     ticket.vehicle = vehicle._id;
   } else if (ticket.vehicle) {
     selectedVehicleId =
@@ -449,6 +479,10 @@ const startCharging = async (
 
     if (activeVehicle) {
       selectedVehicleId = activeVehicle._id.toString();
+      selectedVehicleBatteryPercent =
+        typeof activeVehicle.batteryPercent === "number"
+          ? activeVehicle.batteryPercent
+          : null;
       ticket.vehicle = activeVehicle._id;
     }
   }
@@ -458,6 +492,32 @@ const startCharging = async (
       new HttpError("Vehicle is required to start charging.", 422)
     );
   }
+
+  if (selectedVehicleBatteryPercent === null) {
+    try {
+      const vehicle = await Vehicle.findOne(
+        { _id: selectedVehicleId, owner: sessionUserId },
+        { batteryPercent: 1 }
+      ).lean();
+
+      if (!vehicle) {
+        return next(new HttpError("Vehicle not found.", 404));
+      }
+
+      selectedVehicleBatteryPercent =
+        typeof vehicle.batteryPercent === "number"
+          ? vehicle.batteryPercent
+          : null;
+    } catch (err) {
+      return next(
+        new HttpError("Starting charging failed, please try again.", 500)
+      );
+    }
+  }
+
+  const chargingDurationMs = calculateChargingDurationMs(
+    selectedVehicleBatteryPercent
+  );
 
   const shouldReserveConnector =
     ticket.chargingStatus !== "IN_PROGRESS" || !ticket.startedAt;
@@ -492,6 +552,13 @@ const startCharging = async (
   ticket.completedAt = undefined;
   ticket.progressPercent = 0;
   ticket.connectorType = selectedConnectorType;
+  ticket.chargingDurationMs = chargingDurationMs;
+  if (
+    typeof selectedVehicleBatteryPercent === "number" &&
+    Number.isFinite(selectedVehicleBatteryPercent)
+  ) {
+    ticket.startingBatteryPercent = selectedVehicleBatteryPercent;
+  }
 
   try {
     await ticket.save();
@@ -577,7 +644,12 @@ const updateChargingProgress = async (
     ticket.startedAt = new Date();
   }
 
-  const progressPercent = calculateChargingProgressPercent(ticket.startedAt);
+  const chargingDurationMs = await resolveChargingDurationMsForTicket(ticket);
+  const progressPercent = calculateChargingProgressPercent(
+    ticket.startedAt,
+    Date.now(),
+    chargingDurationMs
+  );
 
   if (progressPercent >= 100) {
     const completedAt = new Date();
@@ -585,12 +657,20 @@ const updateChargingProgress = async (
       userId: sessionUserId,
       stationId,
     });
-    const completedTicket = {
-      ...(completedPayload ?? ticket.toObject({ getters: true })),
-      progressPercent: 100,
-      chargingStatus: "COMPLETED",
-      completedAt,
-    };
+    const completedTicket = appendChargingBatteryPercentage(
+      {
+        ...(completedPayload ?? ticket.toObject({ getters: true })),
+        progressPercent: 100,
+        chargingStatus: "COMPLETED",
+        completedAt,
+      },
+      100
+    );
+    const ticketVehicleId =
+      ticket.vehicle?.toString?.() ?? ticket.vehicle?.id ?? ticket.vehicle;
+    const completedBatteryPercentage = (
+      completedTicket as { batteryPercentage?: number }
+    ).batteryPercentage;
 
     try {
       await finalizeChargingTicket(ticket.id, sessionUserId);
@@ -602,6 +682,12 @@ const updateChargingProgress = async (
           500
         )
       );
+    }
+    if (ticketVehicleId && typeof completedBatteryPercentage === "number") {
+      void updateVehicleBatteryPercentage(
+        ticketVehicleId,
+        completedBatteryPercentage
+      ).catch(() => {});
     }
 
     broadcastChargingProgress(
@@ -663,6 +749,97 @@ const updateChargingProgress = async (
   });
 };
 
+const cancelCharging = async (
+  req: Request & { user?: { id: string } },
+  res: Response,
+  next: NextFunction
+) => {
+  const errors = validationResult(req);
+  if (!errors.isEmpty()) {
+    return next(
+      new HttpError("Invalid inputs passed, please check your data.", 422)
+    );
+  }
+
+  const { stationId } = req.body;
+  const sessionUserId = req.user?.id;
+
+  if (!sessionUserId) {
+    return next(new HttpError("Authentication required.", 401));
+  }
+
+  let ticket;
+  try {
+    ticket = await ChargingTicket.findOne({
+      station: stationId,
+      user: sessionUserId,
+      status: { $in: ["REQUESTED", "PAID"] },
+    }).sort({ createdAt: -1 });
+  } catch (err) {
+    return next(
+      new HttpError("Cancelling charging failed, please try again.", 500)
+    );
+  }
+
+  if (!ticket) {
+    return next(new HttpError("Active ticket not found.", 404));
+  }
+
+  const chargingDurationMs = await resolveChargingDurationMsForTicket(ticket);
+  const progressPercent = calculateChargingProgressPercent(
+    ticket.startedAt,
+    Date.now(),
+    chargingDurationMs
+  );
+
+  const cancelledAt = new Date();
+  const cancelledPayload = await buildChargingTicketPayload(ticket, {
+    userId: sessionUserId,
+    stationId,
+  });
+  const cancelledTicket = appendChargingBatteryPercentage(
+    {
+      ...(cancelledPayload ?? ticket.toObject({ getters: true })),
+      progressPercent,
+      status: "CANCELLED",
+      chargingStatus: "CANCELLED",
+      cancelledAt,
+    },
+    progressPercent
+  );
+  const ticketVehicleId =
+    ticket.vehicle?.toString?.() ?? ticket.vehicle?.id ?? ticket.vehicle;
+  const cancelledBatteryPercentage = (
+    cancelledTicket as { batteryPercentage?: number }
+  ).batteryPercentage;
+
+  try {
+    await finalizeChargingTicket(ticket.id, sessionUserId);
+    clearChargingProgressTimer(ticket.id);
+  } catch (err) {
+    return next(
+      new HttpError("Cancelling charging failed, please try again.", 500)
+    );
+  }
+  if (ticketVehicleId && typeof cancelledBatteryPercentage === "number") {
+    void updateVehicleBatteryPercentage(
+      ticketVehicleId,
+      cancelledBatteryPercentage
+    ).catch(() => {});
+  }
+
+  broadcastChargingProgress(buildChargingProgressKey(sessionUserId, stationId), {
+    type: "cancelled",
+    ticket: null,
+    cancelledTicket,
+  });
+
+  res.status(200).json({
+    message: "Charging cancelled and ticket cleared successfully!",
+    cancelledTicket,
+  });
+};
+
 const completeCharging = async (
   req: Request & { user?: { id: string } },
   res: Response,
@@ -673,6 +850,10 @@ const completeCharging = async (
     return next(
       new HttpError("Invalid inputs passed, please check your data.", 422)
     );
+  }
+
+  if (req.body?.cancel === true) {
+    return cancelCharging(req, res, next);
   }
 
   const { stationId } = req.body;
@@ -704,12 +885,20 @@ const completeCharging = async (
     userId: sessionUserId,
     stationId,
   });
-  const ticketSnapshot = {
-    ...(completedPayload ?? ticket.toObject({ getters: true })),
-    progressPercent: 100,
-    chargingStatus: "COMPLETED",
-    completedAt,
-  };
+  const ticketSnapshot = appendChargingBatteryPercentage(
+    {
+      ...(completedPayload ?? ticket.toObject({ getters: true })),
+      progressPercent: 100,
+      chargingStatus: "COMPLETED",
+      completedAt,
+    },
+    100
+  );
+  const ticketVehicleId =
+    ticket.vehicle?.toString?.() ?? ticket.vehicle?.id ?? ticket.vehicle;
+  const completedBatteryPercentage = (
+    ticketSnapshot as { batteryPercentage?: number }
+  ).batteryPercentage;
 
   try {
     await finalizeChargingTicket(ticket.id, sessionUserId);
@@ -718,6 +907,12 @@ const completeCharging = async (
     return next(
       new HttpError("Completing charging failed, please try again.", 500)
     );
+  }
+  if (ticketVehicleId && typeof completedBatteryPercentage === "number") {
+    void updateVehicleBatteryPercentage(
+      ticketVehicleId,
+      completedBatteryPercentage
+    ).catch(() => {});
   }
 
   broadcastChargingProgress(buildChargingProgressKey(sessionUserId, stationId), {
@@ -728,6 +923,7 @@ const completeCharging = async (
 
   res.status(200).json({
     message: "Charging completed and ticket cleared successfully!",
+    completedTicket: ticketSnapshot,
   });
 };
 
@@ -923,6 +1119,7 @@ export {
   startCharging,
   updateChargingProgress,
   completeCharging,
+  cancelCharging,
   deleteStation,
   getStations,
   getStationById,

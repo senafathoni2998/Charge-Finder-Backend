@@ -94,8 +94,17 @@ router.patch(
 
 router.post(
   "/complete-charging",
-  [check("stationId").not().isEmpty()],
+  [
+    check("stationId").not().isEmpty(),
+    check("cancel").optional().isBoolean().toBoolean(),
+  ],
   stationControllers.completeCharging
+);
+
+router.post(
+  "/cancel-charging",
+  [check("stationId").not().isEmpty()],
+  stationControllers.cancelCharging
 );
 
 router.get(

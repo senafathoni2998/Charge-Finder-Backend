@@ -4,9 +4,13 @@ import { WebSocketServer, WebSocket } from "ws";
 
 import ChargingTicket from "../models/charging-ticket";
 import {
+  appendChargingBatteryPercentage,
   buildChargingTicketPayload,
   calculateChargingProgressPercent,
   finalizeChargingTicket,
+  resolveChargingDurationMsForTicket,
+  resolveChargingDurationMsFromSnapshot,
+  updateVehicleBatteryPercentage,
 } from "../services/charging-ticket-service";
 
 type SubscriberKey = string;
@@ -73,11 +77,24 @@ export const broadcastChargingProgress = (
 const updateTicketProgressSnapshot = <T extends Record<string, unknown>>(
   snapshot: T,
   progressPercent: number
-) => {
-  return {
+): T & {
+  progressPercent: number;
+  chargingStatus: "IN_PROGRESS";
+  batteryPercentage?: number;
+} => {
+  const updatedSnapshot = {
     ...snapshot,
     progressPercent,
     chargingStatus: "IN_PROGRESS" as const,
+  };
+
+  return appendChargingBatteryPercentage(
+    updatedSnapshot,
+    progressPercent
+  ) as T & {
+    progressPercent: number;
+    chargingStatus: "IN_PROGRESS";
+    batteryPercentage?: number;
   };
 };
 
@@ -100,6 +117,8 @@ export const ensureChargingProgressTimer = (ticket: any) => {
   const userId = ticket.user?.toString?.() ?? ticket.user?.id ?? ticket.user;
   const stationId =
     ticket.station?.toString?.() ?? ticket.station?.id ?? ticket.station;
+  const vehicleId =
+    ticket.vehicle?.toString?.() ?? ticket.vehicle?.id ?? ticket.vehicle;
 
   if (!ticketId || !userId || !stationId) {
     return;
@@ -120,24 +139,42 @@ export const ensureChargingProgressTimer = (ticket: any) => {
       return;
     }
 
-    let ticketSnapshot = initialSnapshot;
+    let ticketSnapshot = initialSnapshot as Record<string, unknown>;
+    const chargingDurationMs =
+      resolveChargingDurationMsFromSnapshot(ticketSnapshot);
 
     const key = buildChargingProgressKey(userId, stationId);
 
     const tick = async () => {
-      const progressPercent = calculateChargingProgressPercent(startedAt);
+      const progressPercent = calculateChargingProgressPercent(
+        startedAt,
+        Date.now(),
+        chargingDurationMs
+      );
 
       if (progressPercent >= 100) {
         const completedAt = new Date();
-        const completedTicket = {
-          ...ticketSnapshot,
-          progressPercent: 100,
-          chargingStatus: "COMPLETED",
-          completedAt,
-        };
+        const completedTicket = appendChargingBatteryPercentage(
+          {
+            ...ticketSnapshot,
+            progressPercent: 100,
+            chargingStatus: "COMPLETED",
+            completedAt,
+          },
+          100
+        );
+        const completedBatteryPercentage = (
+          completedTicket as { batteryPercentage?: number }
+        ).batteryPercentage;
 
         try {
           await finalizeChargingTicket(ticketId, userId);
+          if (vehicleId && typeof completedBatteryPercentage === "number") {
+            void updateVehicleBatteryPercentage(
+              vehicleId,
+              completedBatteryPercentage
+            ).catch(() => {});
+          }
           broadcastChargingProgress(key, {
             type: "completed",
             ticket: null,
@@ -150,6 +187,10 @@ export const ensureChargingProgressTimer = (ticket: any) => {
         }
       }
 
+      const previousProgressPercent =
+        typeof ticketSnapshot.progressPercent === "number"
+          ? ticketSnapshot.progressPercent
+          : null;
       ticketSnapshot = updateTicketProgressSnapshot(
         ticketSnapshot,
         progressPercent
@@ -173,6 +214,20 @@ export const ensureChargingProgressTimer = (ticket: any) => {
         }
       } catch (err) {
         // Ignore transient failures; the next tick will retry.
+      }
+
+      const batteryPercentage = (
+        ticketSnapshot as { batteryPercentage?: number }
+      ).batteryPercentage;
+      if (
+        vehicleId &&
+        typeof batteryPercentage === "number" &&
+        previousProgressPercent !== progressPercent
+      ) {
+        void updateVehicleBatteryPercentage(
+          vehicleId,
+          batteryPercentage
+        ).catch(() => {});
       }
 
       broadcastChargingProgress(key, {
@@ -273,8 +328,12 @@ export const initChargingProgressWebSocketServer = (
       activeTicket?.chargingStatus === "IN_PROGRESS" &&
       activeTicket.startedAt
     ) {
+      const chargingDurationMs =
+        await resolveChargingDurationMsForTicket(activeTicket);
       const progressPercent = calculateChargingProgressPercent(
-        activeTicket.startedAt
+        activeTicket.startedAt,
+        Date.now(),
+        chargingDurationMs
       );
 
       if (progressPercent >= 100) {
@@ -283,15 +342,31 @@ export const initChargingProgressWebSocketServer = (
           userId: user.id,
           stationId,
         });
-        const completedTicket = {
-          ...(completedPayload ?? activeTicket.toObject({ getters: true })),
-          progressPercent: 100,
-          chargingStatus: "COMPLETED",
-          completedAt,
-        };
+        const completedTicket = appendChargingBatteryPercentage(
+          {
+            ...(completedPayload ?? activeTicket.toObject({ getters: true })),
+            progressPercent: 100,
+            chargingStatus: "COMPLETED",
+            completedAt,
+          },
+          100
+        );
+        const ticketVehicleId =
+          activeTicket.vehicle?.toString?.() ??
+          activeTicket.vehicle?.id ??
+          activeTicket.vehicle;
+        const completedBatteryPercentage = (
+          completedTicket as { batteryPercentage?: number }
+        ).batteryPercentage;
 
         try {
           await finalizeChargingTicket(activeTicket.id, user.id);
+          if (ticketVehicleId && typeof completedBatteryPercentage === "number") {
+            void updateVehicleBatteryPercentage(
+              ticketVehicleId,
+              completedBatteryPercentage
+            ).catch(() => {});
+          }
           activeTicket = null;
           broadcastChargingProgress(key, {
             type: "completed",

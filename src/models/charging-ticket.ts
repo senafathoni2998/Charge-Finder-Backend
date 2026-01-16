@@ -17,6 +17,8 @@ const chargingTicketSchema = new Schema(
       default: "NOT_STARTED",
     },
     progressPercent: { type: Number, min: 0, max: 100, default: 0 },
+    chargingDurationMs: { type: Number, min: 0 },
+    startingBatteryPercent: { type: Number, min: 0, max: 100 },
     startedAt: { type: Date },
     completedAt: { type: Date },
   },
