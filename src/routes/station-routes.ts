@@ -68,13 +68,18 @@ router.post(
   [
     check("stationId").not().isEmpty(),
     check("connectorType").optional().isIn(["CCS2", "Type2", "CHAdeMO"]),
+    check("vehicleId").optional().not().isEmpty(),
   ],
   stationControllers.requestChargingTicket
 );
 
 router.post(
   "/start-charging",
-  [check("stationId").not().isEmpty()],
+  [
+    check("stationId").not().isEmpty(),
+    check("connectorType").optional().isIn(["CCS2", "Type2", "CHAdeMO"]),
+    check("vehicleId").optional().not().isEmpty(),
+  ],
   stationControllers.startCharging
 );
 

@@ -6,6 +6,11 @@ const vehicleSchema = new Schema({
   connector_type: { type: [String], required: true },
   min_power: { type: Number, required: true },
   active: { type: Boolean, default: false },
+  chargingStatus: {
+    type: String,
+    enum: ["IDLE", "CHARGING"],
+    default: "IDLE",
+  },
   owner: { type: Types.ObjectId, ref: "User", required: true },
 });
 

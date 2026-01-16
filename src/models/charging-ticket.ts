@@ -4,6 +4,7 @@ const chargingTicketSchema = new Schema(
   {
     user: { type: Types.ObjectId, ref: "User", required: true },
     station: { type: Types.ObjectId, ref: "Station", required: true },
+    vehicle: { type: Types.ObjectId, ref: "Vehicle" },
     connectorType: { type: String, enum: ["CCS2", "Type2", "CHAdeMO"] },
     status: {
       type: String,

@@ -6,6 +6,7 @@ import HttpError from "../models/http-error";
 import Station from "../models/station";
 import User from "../models/user";
 import ChargingTicket from "../models/charging-ticket";
+import Vehicle from "../models/vehicle";
 import {
   broadcastChargingProgress,
   buildChargingProgressKey,
@@ -13,8 +14,11 @@ import {
   ensureChargingProgressTimer,
 } from "../realtime/charging-progress";
 import {
+  adjustStationConnectorAvailability,
   buildChargingTicketPayload,
   calculateChargingProgressPercent,
+  setVehicleChargingStatus,
+  setActiveVehicleChargingStatus,
   finalizeChargingTicket,
 } from "../services/charging-ticket-service";
 
@@ -180,7 +184,7 @@ const requestChargingTicket = async (
     );
   }
 
-  const { stationId, connectorType } = req.body;
+  const { stationId, connectorType, vehicleId } = req.body;
   const sessionUserId = req.user?.id;
 
   if (!sessionUserId) {
@@ -227,10 +231,26 @@ const requestChargingTicket = async (
     return next(new HttpError("User not found.", 404));
   }
 
+  let vehicle = null;
+  if (typeof vehicleId === "string") {
+    try {
+      vehicle = await Vehicle.findOne({ _id: vehicleId, owner: user._id });
+    } catch (err) {
+      return next(
+        new HttpError("Requesting ticket failed, please try again.", 500)
+      );
+    }
+
+    if (!vehicle) {
+      return next(new HttpError("Vehicle not found.", 404));
+    }
+  }
+
   const newTicket = new ChargingTicket({
     station: station._id,
     user: user._id,
     connectorType,
+    vehicle: vehicle?._id,
   });
 
   try {
@@ -350,7 +370,7 @@ const startCharging = async (
     );
   }
 
-  const { stationId } = req.body;
+  const { stationId, connectorType, vehicleId } = req.body;
   const sessionUserId = req.user?.id;
 
   if (!sessionUserId) {
@@ -374,17 +394,128 @@ const startCharging = async (
     return next(new HttpError("Active ticket not found.", 404));
   }
 
+  const resolveConnectorType = (value: unknown) => {
+    if (value === "CCS2" || value === "Type2" || value === "CHAdeMO") {
+      return value;
+    }
+    return null;
+  };
+
+  const selectedConnectorType = resolveConnectorType(
+    typeof connectorType === "string" ? connectorType : ticket.connectorType
+  );
+
+  if (!selectedConnectorType) {
+    return next(
+      new HttpError("Connector type is required to start charging.", 422)
+    );
+  }
+
+  let selectedVehicleId: string | null = null;
+  if (typeof vehicleId === "string") {
+    let vehicle;
+    try {
+      vehicle = await Vehicle.findOne({
+        _id: vehicleId,
+        owner: sessionUserId,
+      });
+    } catch (err) {
+      return next(
+        new HttpError("Starting charging failed, please try again.", 500)
+      );
+    }
+
+    if (!vehicle) {
+      return next(new HttpError("Vehicle not found.", 404));
+    }
+
+    selectedVehicleId = vehicle._id.toString();
+    ticket.vehicle = vehicle._id;
+  } else if (ticket.vehicle) {
+    selectedVehicleId =
+      ticket.vehicle?.toString?.() ?? ticket.vehicle?.id ?? ticket.vehicle;
+  } else {
+    let activeVehicle = null;
+    try {
+      activeVehicle = await Vehicle.findOne({
+        owner: sessionUserId,
+        active: true,
+      }).sort({ _id: -1 });
+    } catch (err) {
+      return next(
+        new HttpError("Starting charging failed, please try again.", 500)
+      );
+    }
+
+    if (activeVehicle) {
+      selectedVehicleId = activeVehicle._id.toString();
+      ticket.vehicle = activeVehicle._id;
+    }
+  }
+
+  if (!selectedVehicleId) {
+    return next(
+      new HttpError("Vehicle is required to start charging.", 422)
+    );
+  }
+
+  const shouldReserveConnector =
+    ticket.chargingStatus !== "IN_PROGRESS" || !ticket.startedAt;
+
+  let reservedConnector = false;
+  if (shouldReserveConnector) {
+    try {
+      const reserveResult = await adjustStationConnectorAvailability(
+        stationId,
+        selectedConnectorType,
+        -1
+      );
+
+      if (!reserveResult.ok) {
+        return next(
+          new HttpError(
+            "No available ports for the selected connector type.",
+            409
+          )
+        );
+      }
+      reservedConnector = true;
+    } catch (err) {
+      return next(
+        new HttpError("Starting charging failed, please try again.", 500)
+      );
+    }
+  }
+
   ticket.chargingStatus = "IN_PROGRESS";
   ticket.startedAt = ticket.startedAt ?? new Date();
   ticket.completedAt = undefined;
   ticket.progressPercent = 0;
+  ticket.connectorType = selectedConnectorType;
 
   try {
     await ticket.save();
   } catch (err) {
+    if (reservedConnector) {
+      try {
+        await adjustStationConnectorAvailability(
+          stationId,
+          selectedConnectorType,
+          1
+        );
+      } catch (rollbackErr) {
+        // Ignore rollback failures; the connector count will be reconciled later.
+      }
+    }
     return next(
       new HttpError("Starting charging failed, please try again.", 500)
     );
+  }
+
+  try {
+    await setVehicleChargingStatus(selectedVehicleId, "CHARGING");
+  } catch (err) {
+    // Best-effort: charging should not fail due to vehicle status update.
   }
 
   const ticketPayload = await buildChargingTicketPayload(ticket, {
@@ -495,6 +626,23 @@ const updateChargingProgress = async (
     return next(
       new HttpError("Updating charging progress failed, please try again.", 500)
     );
+  }
+
+  const ticketVehicleId =
+    typeof ticket.vehicle?.toString === "function"
+      ? ticket.vehicle.toString()
+      : typeof ticket.vehicle === "string"
+      ? ticket.vehicle
+      : null;
+
+  try {
+    if (ticketVehicleId) {
+      await setVehicleChargingStatus(ticketVehicleId, "CHARGING");
+    } else {
+      await setActiveVehicleChargingStatus(sessionUserId, "CHARGING");
+    }
+  } catch (err) {
+    // Best-effort: charging should not fail due to vehicle status update.
   }
 
   const ticketPayload = await buildChargingTicketPayload(ticket, {
