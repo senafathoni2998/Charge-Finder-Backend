@@ -13,6 +13,7 @@ import {
   ensureChargingProgressTimer,
 } from "../realtime/charging-progress";
 import {
+  appendChargingEstimate,
   calculateChargingProgressPercent,
   finalizeChargingTicket,
 } from "../services/charging-ticket-service";
@@ -321,8 +322,15 @@ const getActiveTicketForStation = async (
     }
   }
 
+  const ticketPayload = activeTicket
+    ? appendChargingEstimate(
+        activeTicket.toObject({ getters: true }),
+        activeTicket.startedAt
+      )
+    : null;
+
   res.status(200).json({
-    ticket: activeTicket ? activeTicket.toObject({ getters: true }) : null,
+    ticket: ticketPayload,
   });
 };
 
@@ -375,16 +383,21 @@ const startCharging = async (
     );
   }
 
+  const ticketPayload = appendChargingEstimate(
+    ticket.toObject({ getters: true }),
+    ticket.startedAt
+  );
+
   broadcastChargingProgress(buildChargingProgressKey(sessionUserId, stationId), {
     type: "started",
-    ticket: ticket.toObject({ getters: true }),
+    ticket: ticketPayload,
   });
 
   ensureChargingProgressTimer(ticket);
 
   res.status(200).json({
     message: "Charging started successfully!",
-    ticket: ticket.toObject({ getters: true }),
+    ticket: ticketPayload,
   });
 };
 
@@ -476,16 +489,21 @@ const updateChargingProgress = async (
     );
   }
 
+  const ticketPayload = appendChargingEstimate(
+    ticket.toObject({ getters: true }),
+    ticket.startedAt
+  );
+
   broadcastChargingProgress(buildChargingProgressKey(sessionUserId, stationId), {
     type: "progress",
-    ticket: ticket.toObject({ getters: true }),
+    ticket: ticketPayload,
   });
 
   ensureChargingProgressTimer(ticket);
 
   res.status(200).json({
     message: "Charging progress updated successfully!",
-    ticket: ticket.toObject({ getters: true }),
+    ticket: ticketPayload,
   });
 };
 

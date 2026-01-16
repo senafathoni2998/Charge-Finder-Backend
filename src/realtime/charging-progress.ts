@@ -4,6 +4,7 @@ import { WebSocketServer, WebSocket } from "ws";
 
 import ChargingTicket from "../models/charging-ticket";
 import {
+  appendChargingEstimate,
   calculateChargingProgressPercent,
   finalizeChargingTicket,
 } from "../services/charging-ticket-service";
@@ -112,6 +113,7 @@ export const ensureChargingProgressTimer = (ticket: any) => {
   let ticketSnapshot = ticket.toObject
     ? ticket.toObject({ getters: true })
     : { ...ticket };
+  ticketSnapshot = appendChargingEstimate(ticketSnapshot, startedAt);
 
   const key = buildChargingProgressKey(userId, stationId);
 
@@ -293,11 +295,18 @@ export const initChargingProgressWebSocketServer = (
       }
     }
 
+    const initialTicket = activeTicket
+      ? appendChargingEstimate(
+          activeTicket.toObject({ getters: true }),
+          activeTicket.startedAt
+        )
+      : null;
+
     if (ws.readyState === WebSocket.OPEN) {
       ws.send(
         JSON.stringify({
           type: "initial",
-          ticket: activeTicket ? activeTicket.toObject({ getters: true }) : null,
+          ticket: initialTicket,
         })
       );
     }

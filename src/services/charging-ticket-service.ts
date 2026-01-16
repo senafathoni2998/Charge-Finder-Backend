@@ -22,6 +22,36 @@ export const calculateChargingProgressPercent = (
   return Math.min(100, Math.max(0, Math.round(percent)));
 };
 
+export const calculateEstimatedCompletionAt = (
+  startedAt: Date | null | undefined
+) => {
+  if (!startedAt) {
+    return null;
+  }
+
+  const startedAtMs = startedAt.getTime();
+  if (Number.isNaN(startedAtMs)) {
+    return null;
+  }
+
+  return new Date(startedAtMs + CHARGING_DURATION_MS);
+};
+
+export const appendChargingEstimate = (
+  ticketSnapshot: Record<string, unknown>,
+  startedAt: Date | null | undefined
+) => {
+  const estimatedCompletionAt = calculateEstimatedCompletionAt(startedAt);
+  if (!estimatedCompletionAt) {
+    return ticketSnapshot;
+  }
+
+  return {
+    ...ticketSnapshot,
+    estimatedCompletionAt,
+  };
+};
+
 export const finalizeChargingTicket = async (
   ticketId: string,
   userId: string
