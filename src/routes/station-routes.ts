@@ -113,6 +113,8 @@ router.get(
   stationControllers.getActiveTicketForStation
 );
 
+router.get("/charging-history", stationControllers.getChargingHistory);
+
 router.delete(
   "/delete-station",
   adminMiddleware,

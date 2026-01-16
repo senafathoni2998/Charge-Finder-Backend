@@ -25,6 +25,10 @@ import {
   resolveChargingDurationMsForTicket,
   updateVehicleBatteryPercentage,
 } from "../services/charging-ticket-service";
+import {
+  fetchChargingHistoryForUser,
+  recordChargingHistory,
+} from "../services/charging-history-service";
 
 const addStation = async (
   req: Request,
@@ -354,6 +358,16 @@ const getActiveTicketForStation = async (
             ticketVehicleId,
             completedBatteryPercentage
           ).catch(() => {});
+        }
+        try {
+          await recordChargingHistory({
+            userId: sessionUserId,
+            ticketSnapshot: completedTicket,
+            outcome: "COMPLETED",
+            endedAt: completedAt,
+          });
+        } catch (err) {
+          // Best-effort: history should not block completion.
         }
         broadcastChargingProgress(
           buildChargingProgressKey(sessionUserId, stationId),
@@ -689,6 +703,16 @@ const updateChargingProgress = async (
         completedBatteryPercentage
       ).catch(() => {});
     }
+    try {
+      await recordChargingHistory({
+        userId: sessionUserId,
+        ticketSnapshot: completedTicket,
+        outcome: "COMPLETED",
+        endedAt: completedAt,
+      });
+    } catch (err) {
+      // Best-effort: history should not block completion.
+    }
 
     broadcastChargingProgress(
       buildChargingProgressKey(sessionUserId, stationId),
@@ -827,6 +851,16 @@ const cancelCharging = async (
       cancelledBatteryPercentage
     ).catch(() => {});
   }
+  try {
+    await recordChargingHistory({
+      userId: sessionUserId,
+      ticketSnapshot: cancelledTicket,
+      outcome: "CANCELLED",
+      endedAt: cancelledAt,
+    });
+  } catch (err) {
+    // Best-effort: history should not block cancellation.
+  }
 
   broadcastChargingProgress(buildChargingProgressKey(sessionUserId, stationId), {
     type: "cancelled",
@@ -913,6 +947,16 @@ const completeCharging = async (
       ticketVehicleId,
       completedBatteryPercentage
     ).catch(() => {});
+  }
+  try {
+    await recordChargingHistory({
+      userId: sessionUserId,
+      ticketSnapshot: ticketSnapshot,
+      outcome: "COMPLETED",
+      endedAt: completedAt,
+    });
+  } catch (err) {
+    // Best-effort: history should not block completion.
   }
 
   broadcastChargingProgress(buildChargingProgressKey(sessionUserId, stationId), {
@@ -1111,6 +1155,38 @@ const getStationById = async (
   });
 };
 
+const CHARGING_HISTORY_LOOKBACK_DAYS = 3;
+
+const getChargingHistory = async (
+  req: Request & { user?: { id: string } },
+  res: Response,
+  next: NextFunction
+) => {
+  const sessionUserId = req.user?.id;
+
+  if (!sessionUserId) {
+    return next(new HttpError("Authentication required.", 401));
+  }
+
+  const since = new Date(
+    Date.now() - CHARGING_HISTORY_LOOKBACK_DAYS * 24 * 60 * 60 * 1000
+  );
+
+  let history;
+  try {
+    history = await fetchChargingHistoryForUser(sessionUserId, since);
+  } catch (err) {
+    return next(
+      new HttpError(
+        "Fetching charging history failed, please try again later.",
+        500
+      )
+    );
+  }
+
+  res.status(200).json({ history });
+};
+
 export {
   addStation,
   updateStation,
@@ -1123,4 +1199,5 @@ export {
   deleteStation,
   getStations,
   getStationById,
+  getChargingHistory,
 };

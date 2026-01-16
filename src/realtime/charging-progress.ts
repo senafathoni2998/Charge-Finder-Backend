@@ -12,6 +12,7 @@ import {
   resolveChargingDurationMsFromSnapshot,
   updateVehicleBatteryPercentage,
 } from "../services/charging-ticket-service";
+import { recordChargingHistory } from "../services/charging-history-service";
 
 type SubscriberKey = string;
 
@@ -175,6 +176,12 @@ export const ensureChargingProgressTimer = (ticket: any) => {
               completedBatteryPercentage
             ).catch(() => {});
           }
+          void recordChargingHistory({
+            userId,
+            ticketSnapshot: completedTicket,
+            outcome: "COMPLETED",
+            endedAt: completedAt,
+          }).catch(() => {});
           broadcastChargingProgress(key, {
             type: "completed",
             ticket: null,
@@ -367,6 +374,12 @@ export const initChargingProgressWebSocketServer = (
               completedBatteryPercentage
             ).catch(() => {});
           }
+          void recordChargingHistory({
+            userId: user.id,
+            ticketSnapshot: completedTicket,
+            outcome: "COMPLETED",
+            endedAt: completedAt,
+          }).catch(() => {});
           activeTicket = null;
           broadcastChargingProgress(key, {
             type: "completed",
