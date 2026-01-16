@@ -9,6 +9,7 @@ const router = express.Router();
 const profileControllers = require("../controllers/profile-controllers");
 
 router.get("/", profileControllers.getProfile);
+router.get("/charging-history", profileControllers.getChargingHistory);
 
 router.patch(
   "/update-password",

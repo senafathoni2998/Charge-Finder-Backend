@@ -25,16 +25,9 @@ import {
   resolveChargingDurationMsForTicket,
   updateVehicleBatteryPercentage,
 } from "../services/charging-ticket-service";
-import {
-  fetchChargingHistoryForUser,
-  recordChargingHistory,
-} from "../services/charging-history-service";
+import { recordChargingHistory } from "../services/charging-history-service";
 
-const addStation = async (
-  req: Request,
-  res: Response,
-  next: NextFunction
-) => {
+const addStation = async (req: Request, res: Response, next: NextFunction) => {
   const errors = validationResult(req);
   if (!errors.isEmpty()) {
     return next(
@@ -73,7 +66,9 @@ const addStation = async (
   try {
     await newStation.save();
   } catch (err) {
-    return next(new HttpError("Creating station failed, please try again.", 500));
+    return next(
+      new HttpError("Creating station failed, please try again.", 500)
+    );
   }
 
   res.status(201).json({
@@ -316,8 +311,9 @@ const getActiveTicketForStation = async (
     activeTicket?.chargingStatus === "IN_PROGRESS" &&
     activeTicket.startedAt
   ) {
-    const chargingDurationMs =
-      await resolveChargingDurationMsForTicket(activeTicket);
+    const chargingDurationMs = await resolveChargingDurationMsForTicket(
+      activeTicket
+    );
     const progressPercent = calculateChargingProgressPercent(
       activeTicket.startedAt,
       Date.now(),
@@ -350,10 +346,7 @@ const getActiveTicketForStation = async (
       try {
         await finalizeChargingTicket(activeTicket.id, sessionUserId);
         clearChargingProgressTimer(activeTicket.id);
-        if (
-          ticketVehicleId &&
-          typeof completedBatteryPercentage === "number"
-        ) {
+        if (ticketVehicleId && typeof completedBatteryPercentage === "number") {
           void updateVehicleBatteryPercentage(
             ticketVehicleId,
             completedBatteryPercentage
@@ -473,7 +466,9 @@ const startCharging = async (
 
     selectedVehicleId = vehicle._id.toString();
     selectedVehicleBatteryPercent =
-      typeof vehicle.batteryPercent === "number" ? vehicle.batteryPercent : null;
+      typeof vehicle.batteryPercent === "number"
+        ? vehicle.batteryPercent
+        : null;
     ticket.vehicle = vehicle._id;
   } else if (ticket.vehicle) {
     selectedVehicleId =
@@ -502,9 +497,7 @@ const startCharging = async (
   }
 
   if (!selectedVehicleId) {
-    return next(
-      new HttpError("Vehicle is required to start charging.", 422)
-    );
+    return next(new HttpError("Vehicle is required to start charging.", 422));
   }
 
   if (selectedVehicleBatteryPercent === null) {
@@ -604,10 +597,13 @@ const startCharging = async (
     stationId,
   });
 
-  broadcastChargingProgress(buildChargingProgressKey(sessionUserId, stationId), {
-    type: "started",
-    ticket: ticketPayload,
-  });
+  broadcastChargingProgress(
+    buildChargingProgressKey(sessionUserId, stationId),
+    {
+      type: "started",
+      ticket: ticketPayload,
+    }
+  );
 
   ensureChargingProgressTimer(ticket);
 
@@ -691,10 +687,7 @@ const updateChargingProgress = async (
       clearChargingProgressTimer(ticket.id);
     } catch (err) {
       return next(
-        new HttpError(
-          "Completing charging failed, please try again.",
-          500
-        )
+        new HttpError("Completing charging failed, please try again.", 500)
       );
     }
     if (ticketVehicleId && typeof completedBatteryPercentage === "number") {
@@ -760,10 +753,13 @@ const updateChargingProgress = async (
     stationId,
   });
 
-  broadcastChargingProgress(buildChargingProgressKey(sessionUserId, stationId), {
-    type: "progress",
-    ticket: ticketPayload,
-  });
+  broadcastChargingProgress(
+    buildChargingProgressKey(sessionUserId, stationId),
+    {
+      type: "progress",
+      ticket: ticketPayload,
+    }
+  );
 
   ensureChargingProgressTimer(ticket);
 
@@ -862,11 +858,14 @@ const cancelCharging = async (
     // Best-effort: history should not block cancellation.
   }
 
-  broadcastChargingProgress(buildChargingProgressKey(sessionUserId, stationId), {
-    type: "cancelled",
-    ticket: null,
-    cancelledTicket,
-  });
+  broadcastChargingProgress(
+    buildChargingProgressKey(sessionUserId, stationId),
+    {
+      type: "cancelled",
+      ticket: null,
+      cancelledTicket,
+    }
+  );
 
   res.status(200).json({
     message: "Charging cancelled and ticket cleared successfully!",
@@ -959,11 +958,14 @@ const completeCharging = async (
     // Best-effort: history should not block completion.
   }
 
-  broadcastChargingProgress(buildChargingProgressKey(sessionUserId, stationId), {
-    type: "completed",
-    ticket: null,
-    completedTicket: ticketSnapshot,
-  });
+  broadcastChargingProgress(
+    buildChargingProgressKey(sessionUserId, stationId),
+    {
+      type: "completed",
+      ticket: null,
+      completedTicket: ticketSnapshot,
+    }
+  );
 
   res.status(200).json({
     message: "Charging completed and ticket cleared successfully!",
@@ -1070,7 +1072,10 @@ const getStations = async (
       return rawId;
     }
 
-    if (rawId && typeof (rawId as { toString?: () => string }).toString === "function") {
+    if (
+      rawId &&
+      typeof (rawId as { toString?: () => string }).toString === "function"
+    ) {
       return (rawId as { toString: () => string }).toString();
     }
 
@@ -1109,6 +1114,10 @@ const getStationById = async (
 
   const { stationId } = req.params;
   const sessionUserId = req.user?.id ?? req.session?.user?.id;
+
+  if (!mongoose.Types.ObjectId.isValid(stationId)) {
+    return next(new HttpError("Invalid station id.", 422));
+  }
 
   let station;
   try {
@@ -1155,37 +1164,6 @@ const getStationById = async (
   });
 };
 
-const CHARGING_HISTORY_LOOKBACK_DAYS = 3;
-
-const getChargingHistory = async (
-  req: Request & { user?: { id: string } },
-  res: Response,
-  next: NextFunction
-) => {
-  const sessionUserId = req.user?.id;
-
-  if (!sessionUserId) {
-    return next(new HttpError("Authentication required.", 401));
-  }
-
-  const since = new Date(
-    Date.now() - CHARGING_HISTORY_LOOKBACK_DAYS * 24 * 60 * 60 * 1000
-  );
-
-  let history;
-  try {
-    history = await fetchChargingHistoryForUser(sessionUserId, since);
-  } catch (err) {
-    return next(
-      new HttpError(
-        "Fetching charging history failed, please try again later.",
-        500
-      )
-    );
-  }
-
-  res.status(200).json({ history });
-};
 
 export {
   addStation,
@@ -1199,5 +1177,4 @@ export {
   deleteStation,
   getStations,
   getStationById,
-  getChargingHistory,
 };

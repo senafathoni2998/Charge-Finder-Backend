@@ -2,6 +2,7 @@ import type { Request, Response, NextFunction } from "express";
 import HttpError from "../models/http-error";
 
 import User from "../models/user";
+import { fetchChargingHistoryForUser } from "../services/charging-history-service";
 
 const jwt = require("jsonwebtoken");
 const bcrypt = require("bcryptjs");
@@ -120,6 +121,39 @@ const profileUpdate = async (req: Request, res: Response, next: NextFunction) =>
   res.status(200).json({ message: "Profile updated successfully!" });
 } 
 
+const CHARGING_HISTORY_LOOKBACK_DAYS = 3;
+
+const getChargingHistory = async (
+  req: Request,
+  res: Response,
+  next: NextFunction
+) => {
+  const userId = req.session?.user?.id;
+
+  if (!userId) {
+    return next(new HttpError("Not authenticated.", 401));
+  }
+
+  const since = new Date(
+    Date.now() - CHARGING_HISTORY_LOOKBACK_DAYS * 24 * 60 * 60 * 1000
+  );
+
+  let history;
+  try {
+    history = await fetchChargingHistoryForUser(userId, since);
+  } catch (err) {
+    return next(
+      new HttpError(
+        "Fetching charging history failed, please try again later.",
+        500
+      )
+    );
+  }
+
+  res.status(200).json({ history });
+};
+
 exports.passwordUpdate = passwordUpdate;
 exports.profileUpdate = profileUpdate;
 exports.getProfile = getProfile;
+exports.getChargingHistory = getChargingHistory;
