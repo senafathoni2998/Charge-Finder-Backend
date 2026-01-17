@@ -23,7 +23,7 @@ const addNewVehicle = async (
     );
   }
 
-  const { name, connector_type, min_power, userId } = req.body;
+  const { name, connector_type, min_power, userId, batteryCapacity } = req.body;
 
   let user;
   try {
@@ -44,6 +44,9 @@ const addNewVehicle = async (
     min_power,
     owner: user._id,
   });
+  if (typeof batteryCapacity === "number" && Number.isFinite(batteryCapacity)) {
+    newVehicle.batteryCapacity = batteryCapacity;
+  }
 
   try {
     const sess = await mongoose.startSession();
@@ -75,7 +78,8 @@ const updateVehicle = async (
     );
   }
 
-  const { vehicleId, name, connector_type, min_power, userId } = req.body;
+  const { vehicleId, name, connector_type, min_power, userId, batteryCapacity } =
+    req.body;
   const sessionUserId = req.user?.id;
   const effectiveUserId = userId || sessionUserId;
 
@@ -114,6 +118,10 @@ const updateVehicle = async (
 
   if (min_power !== undefined) {
     vehicle.min_power = min_power;
+  }
+
+  if (typeof batteryCapacity === "number" && Number.isFinite(batteryCapacity)) {
+    vehicle.batteryCapacity = batteryCapacity;
   }
 
   try {

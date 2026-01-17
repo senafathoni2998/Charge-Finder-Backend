@@ -13,6 +13,7 @@ router.post(
         check("connector_type").optional().isArray({ min: 1 }),
         check("connector_type.*").optional().isString().not().isEmpty(),
         check("min_power").optional().not().isEmpty(),
+        check("batteryCapacity").optional().isFloat({ min: 0 }).toFloat(),
     ],
     vehicleControllers.addNewVehicle
 );
@@ -26,6 +27,7 @@ router.patch(
         check("connector_type").optional().isArray({ min: 1 }),
         check("connector_type.*").optional().isString().not().isEmpty(),
         check("min_power").optional().not().isEmpty(),
+        check("batteryCapacity").optional().isFloat({ min: 0 }).toFloat(),
     ],
     vehicleControllers.updateVehicle
 );

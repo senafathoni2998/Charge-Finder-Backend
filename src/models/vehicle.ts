@@ -7,6 +7,7 @@ const vehicleSchema = new Schema({
   min_power: { type: Number, required: true },
   active: { type: Boolean, default: false },
   batteryPercent: { type: Number, min: 0, max: 100, default: 100 },
+  batteryCapacity: { type: Number, min: 0 },
   lastBatteryUpdatedAt: { type: Date, default: Date.now },
   chargingStatus: {
     type: String,
