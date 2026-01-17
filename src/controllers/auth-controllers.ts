@@ -2,6 +2,7 @@ import type { Request, Response, NextFunction } from "express";
 import HttpError from "../models/http-error";
 
 import User from "../models/user";
+import { getPublicImagePathFromFile } from "../utils/image-paths";
 
 const jwt = require("jsonwebtoken");
 const bcrypt = require("bcryptjs");
@@ -47,6 +48,7 @@ const signup = async (req: Request, res: Response, next: NextFunction) => {
     password: hashedPassword,
     region: region || "",
     role: "user",
+    image: req.file ? getPublicImagePathFromFile(req.file) : undefined,
   });
 
   try {
@@ -127,6 +129,7 @@ const createAdmin = async (req: Request, res: Response, next: NextFunction) => {
     password: hashedPassword,
     region: region || "",
     role: "admin",
+    image: req.file ? getPublicImagePathFromFile(req.file) : undefined,
   });
 
   try {
@@ -241,15 +244,13 @@ const logout = async (req: Request, res: Response, next: NextFunction) => {
   // Since JWT is stateless, logout can be handled on the client side by deleting the token.
   // Optionally, you can implement token blacklisting on the server side if needed.
   // res.status(200).json({ message: "Logged out successfully!" });
-    req.session.destroy((err) => {
+  req.session.destroy((err) => {
     if (err) return res.status(500).json({ message: "Logout failed" });
 
     res.clearCookie("sid");
     res.status(200).json({ message: "Logged out" });
   });
 };
-
-
 
 const getSession = (req: Request, res: Response) => {
   const sessionUser = req.session?.user ?? null;

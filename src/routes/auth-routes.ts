@@ -1,3 +1,5 @@
+import { fileUpload } from "../middleware/fileUpload";
+
 const express = require("express");
 const { check } = require("express-validator");
 const { adminMiddleware } = require("../middleware/authMiddleware");
@@ -16,6 +18,7 @@ router.post(
 );
 router.post(
   "/signup",
+  fileUpload.single("image"),
   [
     check("name").not().isEmpty(),
     check("email").normalizeEmail().isEmail(),
@@ -27,6 +30,7 @@ router.post(
 router.post(
   "/admin/signup",
   adminMiddleware,
+  fileUpload.single("image"),
   [
     check("name").not().isEmpty(),
     check("email").normalizeEmail().isEmail(),

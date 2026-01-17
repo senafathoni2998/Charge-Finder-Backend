@@ -7,6 +7,10 @@ import HttpError from "../models/http-error";
 import User from "../models/user";
 import Vehicle from "../models/vehicle";
 import ChargingTicket from "../models/charging-ticket";
+import {
+  deletePublicImageFile,
+  getPublicImagePathFromFile,
+} from "../utils/image-paths";
 
 const getUsers = async (req: Request, res: Response, next: NextFunction) => {
   try {
@@ -118,6 +122,14 @@ const updateUser = async (req: Request, res: Response, next: NextFunction) => {
     user.region = region;
   }
 
+  const nextImagePath = req.file
+    ? getPublicImagePathFromFile(req.file)
+    : user.image;
+  const previousImagePath = user.image;
+  if (req.file) {
+    user.image = nextImagePath;
+  }
+
   if (role === "admin" || role === "user") {
     user.role = role;
   }
@@ -136,6 +148,19 @@ const updateUser = async (req: Request, res: Response, next: NextFunction) => {
     await user.save();
   } catch (err) {
     return next(new HttpError("Updating user failed, please try again.", 500));
+  }
+
+  if (req.file && previousImagePath && previousImagePath !== nextImagePath) {
+    try {
+      await deletePublicImageFile(previousImagePath);
+    } catch (err) {
+      return next(
+        new HttpError(
+          "User updated, but removing the previous image failed.",
+          500
+        )
+      );
+    }
   }
 
   const { password: _, ...userWithoutPassword } = user.toObject({
@@ -169,6 +194,8 @@ const deleteUser = async (req: Request, res: Response, next: NextFunction) => {
     return next(new HttpError("User not found.", 404));
   }
 
+  const imagePath = user.image;
+
   try {
     const sess = await mongoose.startSession();
     sess.startTransaction();
@@ -178,6 +205,19 @@ const deleteUser = async (req: Request, res: Response, next: NextFunction) => {
     await sess.commitTransaction();
   } catch (err) {
     return next(new HttpError("Deleting user failed, please try again.", 500));
+  }
+
+  if (imagePath) {
+    try {
+      await deletePublicImageFile(imagePath);
+    } catch (err) {
+      return next(
+        new HttpError(
+          "User deleted, but removing the profile image failed.",
+          500
+        )
+      );
+    }
   }
 
   res.status(200).json({ message: "User deleted successfully!" });

@@ -20,6 +20,7 @@ import { ensureAdminUser } from "./startup/ensure-admin";
 import { ensureStationsSeeded } from "./startup/ensure-stations";
 import { ensureVehicleBatteryDefaults } from "./services/vehicle-battery-service";
 import HttpError from "./models/http-error";
+import { IMAGE_PUBLIC_ROOT, IMAGE_UPLOAD_ROOT } from "./utils/image-paths";
 const authRoutes = require("./routes/auth-routes");
 const adminRoutes = require("./routes/admin-routes");
 const profileRoutes = require("./routes/profile-routes");
@@ -30,6 +31,8 @@ const app = express();
 const server = http.createServer(app);
 
 app.use(bodyParser.json());
+
+app.use(`/${IMAGE_PUBLIC_ROOT}`, express.static(IMAGE_UPLOAD_ROOT));
 
 // ✅ session middleware now sees SESSION_SECRET
 app.use(sessionMiddleware);

@@ -9,6 +9,7 @@ const userSchema = new Schema({
   role: { type: String, enum: ["admin", "user"], default: "user" },
   vehicles: [{ type: Types.ObjectId, ref: "Vehicle" }],
   tickets: [{ type: Types.ObjectId, ref: "ChargingTicket" }],
+  image: { type: String },
 });
 
 export default model("User", userSchema);

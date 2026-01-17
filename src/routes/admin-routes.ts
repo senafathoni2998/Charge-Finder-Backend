@@ -1,3 +1,5 @@
+import { fileUpload } from "../middleware/fileUpload";
+
 const express = require("express");
 const { check, param } = require("express-validator");
 
@@ -24,6 +26,7 @@ router.post(
 router.patch(
   "/users/:userId",
   adminMiddleware,
+  fileUpload.single("image"),
   [
     param("userId").not().isEmpty(),
     check("name").optional().not().isEmpty(),

@@ -3,6 +3,10 @@ import HttpError from "../models/http-error";
 
 import User from "../models/user";
 import { fetchChargingHistoryForUser } from "../services/charging-history-service";
+import {
+  deletePublicImageFile,
+  getPublicImagePathFromFile,
+} from "../utils/image-paths";
 
 const jwt = require("jsonwebtoken");
 const bcrypt = require("bcryptjs");
@@ -20,7 +24,9 @@ const getProfile = async (req: Request, res: Response, next: NextFunction) => {
   try {
     user = await User.findById(userId).select("-password");
   } catch (err) {
-    return next(new HttpError("Fetching profile failed, please try again.", 500));
+    return next(
+      new HttpError("Fetching profile failed, please try again.", 500)
+    );
   }
 
   if (!user) {
@@ -30,7 +36,11 @@ const getProfile = async (req: Request, res: Response, next: NextFunction) => {
   res.status(200).json({ user });
 };
 
-const passwordUpdate = async (req: Request, res: Response, next: NextFunction) => {
+const passwordUpdate = async (
+  req: Request,
+  res: Response,
+  next: NextFunction
+) => {
   // Implementation for password update
   const errors = validationResult(req);
   if (!errors.isEmpty()) {
@@ -44,7 +54,9 @@ const passwordUpdate = async (req: Request, res: Response, next: NextFunction) =
   try {
     user = await User.findById(userId);
   } catch (err) {
-    return next(new HttpError("Password update failed, please try again.", 500));
+    return next(
+      new HttpError("Password update failed, please try again.", 500)
+    );
   }
 
   if (!user) {
@@ -82,13 +94,19 @@ const passwordUpdate = async (req: Request, res: Response, next: NextFunction) =
   try {
     await user.save();
   } catch (err) {
-    return next(new HttpError("Password update failed, please try again.", 500));
+    return next(
+      new HttpError("Password update failed, please try again.", 500)
+    );
   }
 
   res.status(200).json({ message: "Password updated successfully!" });
 };
 
-const profileUpdate = async (req: Request, res: Response, next: NextFunction) => {  
+const profileUpdate = async (
+  req: Request,
+  res: Response,
+  next: NextFunction
+) => {
   // Implementation for profile update
   const errors = validationResult(req);
   if (!errors.isEmpty()) {
@@ -111,6 +129,11 @@ const profileUpdate = async (req: Request, res: Response, next: NextFunction) =>
 
   user.name = name || user.name;
   user.region = region || user.region;
+  const nextImagePath = req.file
+    ? getPublicImagePathFromFile(req.file)
+    : user.image;
+  const previousImagePath = user.image;
+  user.image = nextImagePath;
 
   try {
     await user.save();
@@ -118,8 +141,21 @@ const profileUpdate = async (req: Request, res: Response, next: NextFunction) =>
     return next(new HttpError("Profile update failed, please try again.", 500));
   }
 
+  if (req.file && previousImagePath && previousImagePath !== nextImagePath) {
+    try {
+      await deletePublicImageFile(previousImagePath);
+    } catch (err) {
+      return next(
+        new HttpError(
+          "Profile updated, but removing the previous image failed.",
+          500
+        )
+      );
+    }
+  }
+
   res.status(200).json({ message: "Profile updated successfully!" });
-} 
+};
 
 const CHARGING_HISTORY_LOOKBACK_DAYS = 3;
 
