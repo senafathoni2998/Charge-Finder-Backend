@@ -15,6 +15,8 @@ const chargingHistorySchema = new Schema(
     vehicle: { type: Types.ObjectId, ref: "Vehicle" },
     vehicleName: { type: String },
     connectorType: { type: String, enum: ["CCS2", "Type2", "CHAdeMO"] },
+    chargingSpeed: { type: String, enum: ["NORMAL", "FAST", "ULTRA_FAST"] },
+    ticketKwh: { type: Number, min: 0 },
     startedAt: { type: Date },
     endedAt: { type: Date, required: true },
     outcome: { type: String, enum: ["COMPLETED", "CANCELLED"], required: true },

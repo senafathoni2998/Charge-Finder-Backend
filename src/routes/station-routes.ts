@@ -27,6 +27,8 @@ router.post(
     check("pricing").not().isEmpty(),
     check("pricing.currency").not().isEmpty(),
     check("pricing.perKwh").not().isEmpty(),
+    check("pricing.fastPerKwh").optional().isFloat({ min: 0 }).toFloat(),
+    check("pricing.ultraFastPerKwh").optional().isFloat({ min: 0 }).toFloat(),
     check("amenities").optional().isArray(),
     check("notes").optional().isString(),
   ],
@@ -57,6 +59,8 @@ router.patch(
     check("pricing").optional().not().isEmpty(),
     check("pricing.currency").optional().not().isEmpty(),
     check("pricing.perKwh").optional().not().isEmpty(),
+    check("pricing.fastPerKwh").optional().isFloat({ min: 0 }).toFloat(),
+    check("pricing.ultraFastPerKwh").optional().isFloat({ min: 0 }).toFloat(),
     check("amenities").optional().isArray(),
     check("notes").optional().isString(),
   ],
@@ -68,6 +72,10 @@ router.post(
   [
     check("stationId").not().isEmpty(),
     check("connectorType").optional().isIn(["CCS2", "Type2", "CHAdeMO"]),
+    check("chargingSpeed")
+      .optional()
+      .isIn(["NORMAL", "FAST", "ULTRA_FAST"]),
+    check("ticketKwh").optional().isFloat({ min: 0 }).toFloat(),
     check("vehicleId").optional().not().isEmpty(),
   ],
   stationControllers.requestChargingTicket

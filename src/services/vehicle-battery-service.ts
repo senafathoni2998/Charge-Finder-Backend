@@ -6,6 +6,28 @@ const BATTERY_DRAIN_TICK_MS = 10 * 60_000;
 const BATTERY_DRAIN_STEP = 5;
 const BATTERY_PERCENT_DEFAULT = 100;
 
+export const parseBatteryCapacityDefault = (raw: string | undefined) => {
+  if (raw === undefined) {
+    return undefined;
+  }
+
+  const trimmed = raw.trim();
+  if (!trimmed) {
+    return undefined;
+  }
+
+  if (trimmed.toLowerCase() === "null") {
+    return null;
+  }
+
+  const value = Number(trimmed);
+  if (!Number.isFinite(value) || value < 0) {
+    return undefined;
+  }
+
+  return value;
+};
+
 const isBatteryStatus = (value: unknown): value is BatteryStatus => {
   return (
     value === "FULL" ||
@@ -22,6 +44,15 @@ const clampBatteryPercent = (value: number) => {
   }
 
   return Math.min(100, Math.max(0, Math.round(value)));
+};
+
+export const backfillVehicleBatteryCapacity = async (
+  defaultCapacity: number | null
+) => {
+  return Vehicle.updateMany(
+    { batteryCapacity: { $exists: false } },
+    { $set: { batteryCapacity: defaultCapacity } }
+  );
 };
 
 const parseBatteryUpdatedAt = (value: unknown) => {
@@ -83,6 +114,13 @@ export const ensureVehicleBatteryDefaults = async () => {
     { batteryPercent: { $exists: false } },
     { $set: { batteryPercent: BATTERY_PERCENT_DEFAULT } }
   );
+
+  const capacityDefault = parseBatteryCapacityDefault(
+    process.env.BATTERY_CAPACITY_DEFAULT
+  );
+  if (capacityDefault !== undefined) {
+    await backfillVehicleBatteryCapacity(capacityDefault);
+  }
 
   await Vehicle.updateMany(
     { lastBatteryUpdatedAt: { $exists: false } },

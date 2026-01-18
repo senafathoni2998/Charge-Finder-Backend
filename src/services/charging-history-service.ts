@@ -86,6 +86,22 @@ const resolveConnectorType = (value: unknown) => {
   return null;
 };
 
+const resolveChargingSpeed = (value: unknown) => {
+  if (value === "NORMAL" || value === "FAST" || value === "ULTRA_FAST") {
+    return value;
+  }
+
+  return null;
+};
+
+const normalizeKwh = (value: unknown) => {
+  if (typeof value !== "number" || !Number.isFinite(value)) {
+    return null;
+  }
+
+  return Math.max(0, value);
+};
+
 const resolveSnapshotId = (
   snapshot: Record<string, unknown>,
   key: "station" | "vehicle"
@@ -154,6 +170,8 @@ export const recordChargingHistory = async ({
     vehicle: vehicleId ?? undefined,
     vehicleName: typeof vehicleInfo?.name === "string" ? vehicleInfo.name : undefined,
     connectorType: resolveConnectorType(ticketSnapshot.connectorType),
+    chargingSpeed: resolveChargingSpeed(ticketSnapshot.chargingSpeed),
+    ticketKwh: normalizeKwh(ticketSnapshot.ticketKwh) ?? undefined,
     startedAt: startedAt ?? undefined,
     endedAt: endedAtDate,
     outcome,

@@ -4,6 +4,7 @@
   "main": "index.js",
   "scripts": {
     "start": "nodemon --exec ts-node --files src/app.ts",
+    "backfill:battery-capacity": "ts-node --files src/scripts/backfill-battery-capacity.ts",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "keywords": [],

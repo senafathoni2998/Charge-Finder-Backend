@@ -9,7 +9,15 @@ import {
   refreshVehicleBatterySnapshot,
 } from "./vehicle-battery-service";
 
-export const CHARGING_DURATION_MS = 5 * 60 * 1000;
+export type ChargingSpeed = "NORMAL" | "FAST" | "ULTRA_FAST";
+
+const CHARGING_SPEED_MAX_DURATION_MS: Record<ChargingSpeed, number> = {
+  NORMAL: 7 * 60 * 1000,
+  FAST: 5 * 60 * 1000,
+  ULTRA_FAST: 3 * 60 * 1000,
+};
+
+export const CHARGING_DURATION_MS = CHARGING_SPEED_MAX_DURATION_MS.NORMAL;
 export const CHARGING_PERCENT_INTERVAL_MS = 30 * 1000;
 
 const clampBatteryPercent = (value: number) => {
@@ -18,6 +26,44 @@ const clampBatteryPercent = (value: number) => {
   }
 
   return Math.min(100, Math.max(0, Math.round(value)));
+};
+
+const resolveBatteryCapacity = (value: unknown) => {
+  if (typeof value !== "number" || !Number.isFinite(value) || value <= 0) {
+    return null;
+  }
+
+  return value;
+};
+
+const resolveBatteryCapacityFromInfo = (value: unknown) => {
+  if (!value || typeof value !== "object") {
+    return null;
+  }
+
+  return resolveBatteryCapacity(
+    (value as { batteryCapacity?: unknown }).batteryCapacity
+  );
+};
+
+const resolveTicketKwh = (value: unknown) => {
+  if (typeof value !== "number" || !Number.isFinite(value) || value <= 0) {
+    return null;
+  }
+
+  return value;
+};
+
+const resolveChargingSpeed = (value: unknown): ChargingSpeed => {
+  if (value === "FAST" || value === "ULTRA_FAST" || value === "NORMAL") {
+    return value;
+  }
+
+  return "NORMAL";
+};
+
+const getMaxChargingDurationMs = (chargingSpeed: unknown) => {
+  return CHARGING_SPEED_MAX_DURATION_MS[resolveChargingSpeed(chargingSpeed)];
 };
 
 export const calculateChargingProgressPercent = (
@@ -78,25 +124,38 @@ export const appendChargingEstimate = (
 };
 
 export const calculateChargingDurationMs = (
-  batteryPercent: number | null | undefined
+  batteryPercent: number | null | undefined,
+  chargingSpeed?: ChargingSpeed | null,
+  targetBatteryPercent?: number | null
 ) => {
+  const maxDurationMs = getMaxChargingDurationMs(chargingSpeed);
   if (typeof batteryPercent !== "number" || !Number.isFinite(batteryPercent)) {
-    return CHARGING_DURATION_MS;
+    return maxDurationMs;
   }
 
   const normalizedPercent = clampBatteryPercent(batteryPercent);
-  return Math.max(0, (100 - normalizedPercent) * CHARGING_PERCENT_INTERVAL_MS);
+  const normalizedTarget =
+    typeof targetBatteryPercent === "number" &&
+    Number.isFinite(targetBatteryPercent)
+      ? clampBatteryPercent(targetBatteryPercent)
+      : 100;
+  const remainingPercent = Math.max(0, normalizedTarget - normalizedPercent);
+  return Math.max(0, Math.round((remainingPercent / 100) * maxDurationMs));
 };
 
 export const calculateChargingBatteryPercentage = (
   progressPercent: number,
-  startingBatteryPercent: number
+  startingBatteryPercent: number,
+  targetBatteryPercent = 100
 ) => {
   const normalizedProgress = clampBatteryPercent(progressPercent);
   const normalizedStart = clampBatteryPercent(startingBatteryPercent);
-  const remaining = 100 - normalizedStart;
-  const estimatedPercent = normalizedStart + (remaining * normalizedProgress) / 100;
-  return clampBatteryPercent(estimatedPercent);
+  const normalizedTarget = clampBatteryPercent(targetBatteryPercent);
+  const effectiveTarget = Math.max(normalizedStart, normalizedTarget);
+  const remaining = effectiveTarget - normalizedStart;
+  const estimatedPercent =
+    normalizedStart + (remaining * normalizedProgress) / 100;
+  return clampBatteryPercent(Math.min(effectiveTarget, estimatedPercent));
 };
 
 const resolveBatteryPercentFromVehicleInfo = (vehicleInfo: unknown) => {
@@ -131,6 +190,39 @@ const resolveStartingBatteryPercent = (
   );
 };
 
+const resolveTargetBatteryPercent = (
+  snapshot: Record<string, unknown>,
+  startingBatteryPercent: number | null,
+  vehicleInfo?: Record<string, unknown> | null
+) => {
+  if (startingBatteryPercent === null) {
+    return null;
+  }
+
+  const rawTarget = (snapshot as { targetBatteryPercent?: unknown })
+    .targetBatteryPercent;
+  if (typeof rawTarget === "number" && Number.isFinite(rawTarget)) {
+    return clampBatteryPercent(rawTarget);
+  }
+
+  const ticketKwh = resolveTicketKwh(
+    (snapshot as { ticketKwh?: unknown }).ticketKwh
+  );
+  if (ticketKwh === null) {
+    return null;
+  }
+
+  const capacity = resolveBatteryCapacityFromInfo(
+    vehicleInfo ?? (snapshot as { vehicleInfo?: unknown }).vehicleInfo
+  );
+  if (capacity === null) {
+    return null;
+  }
+
+  const percentFromKwh = (ticketKwh / capacity) * 100;
+  return clampBatteryPercent(startingBatteryPercent + percentFromKwh);
+};
+
 export const appendChargingBatteryPercentage = <
   T extends Record<string, unknown>
 >(
@@ -151,11 +243,18 @@ export const appendChargingBatteryPercentage = <
     return snapshot;
   }
 
+  const targetBatteryPercent = resolveTargetBatteryPercent(
+    snapshot,
+    startingBatteryPercent,
+    vehicleInfo
+  );
+
   return {
     ...snapshot,
     batteryPercentage: calculateChargingBatteryPercentage(
       progressPercent,
-      startingBatteryPercent
+      startingBatteryPercent,
+      targetBatteryPercent ?? 100
     ),
   };
 };
@@ -288,12 +387,22 @@ export const resolveChargingDurationMsFromSnapshot = (
   }
 
   const batteryPercent = resolveStartingBatteryPercent(snapshot, vehicleInfo);
+  const targetBatteryPercent = resolveTargetBatteryPercent(
+    snapshot,
+    batteryPercent,
+    vehicleInfo
+  );
+  const chargingSpeed = resolveChargingSpeed(snapshot.chargingSpeed);
 
   if (batteryPercent !== null) {
-    return calculateChargingDurationMs(batteryPercent);
+    return calculateChargingDurationMs(
+      batteryPercent,
+      chargingSpeed,
+      targetBatteryPercent
+    );
   }
 
-  return CHARGING_DURATION_MS;
+  return getMaxChargingDurationMs(chargingSpeed);
 };
 
 export const resolveChargingDurationMsForTicket = async (ticket: any) => {
@@ -306,12 +415,23 @@ export const resolveChargingDurationMsForTicket = async (ticket: any) => {
     return Math.max(0, rawDuration);
   }
 
+  const chargingSpeed = resolveChargingSpeed(ticket.chargingSpeed);
+
   const rawStartingPercent = ticket.startingBatteryPercent;
   if (
     typeof rawStartingPercent === "number" &&
     Number.isFinite(rawStartingPercent)
   ) {
-    return calculateChargingDurationMs(rawStartingPercent);
+    const targetBatteryPercent = resolveTargetBatteryPercent(
+      ticket,
+      rawStartingPercent,
+      null
+    );
+    return calculateChargingDurationMs(
+      rawStartingPercent,
+      chargingSpeed,
+      targetBatteryPercent
+    );
   }
 
   const vehicleId = resolveId(ticket.vehicle);
@@ -322,13 +442,23 @@ export const resolveChargingDurationMsForTicket = async (ticket: any) => {
   try {
     const vehicle = await Vehicle.findById(vehicleId, {
       batteryPercent: 1,
+      batteryCapacity: 1,
     }).lean();
     if (!vehicle || typeof vehicle.batteryPercent !== "number") {
-      return CHARGING_DURATION_MS;
+      return getMaxChargingDurationMs(chargingSpeed);
     }
-    return calculateChargingDurationMs(vehicle.batteryPercent);
+    const targetBatteryPercent = resolveTargetBatteryPercent(
+      ticket,
+      vehicle.batteryPercent,
+      vehicle as Record<string, unknown>
+    );
+    return calculateChargingDurationMs(
+      vehicle.batteryPercent,
+      chargingSpeed,
+      targetBatteryPercent
+    );
   } catch (err) {
-    return CHARGING_DURATION_MS;
+    return getMaxChargingDurationMs(chargingSpeed);
   }
 };
 
@@ -360,6 +490,10 @@ export const buildChargingTicketPayload = async (
     ticketSnapshot,
     hydratedVehicleInfo
   );
+  ticketSnapshot = {
+    ...ticketSnapshot,
+    chargingDurationMs: durationMs,
+  };
   ticketSnapshot = appendChargingEstimate(ticketSnapshot, startedAt, durationMs);
   ticketSnapshot = appendChargingBatteryPercentage(
     ticketSnapshot,

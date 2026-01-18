@@ -6,6 +6,13 @@ const chargingTicketSchema = new Schema(
     station: { type: Types.ObjectId, ref: "Station", required: true },
     vehicle: { type: Types.ObjectId, ref: "Vehicle" },
     connectorType: { type: String, enum: ["CCS2", "Type2", "CHAdeMO"] },
+    chargingSpeed: {
+      type: String,
+      enum: ["NORMAL", "FAST", "ULTRA_FAST"],
+      default: "NORMAL",
+    },
+    ticketKwh: { type: Number, min: 0 },
+    targetBatteryPercent: { type: Number, min: 0, max: 100 },
     status: {
       type: String,
       enum: ["REQUESTED", "PAID", "CANCELLED"],

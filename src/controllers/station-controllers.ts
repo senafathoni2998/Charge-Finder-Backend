@@ -27,6 +27,39 @@ import {
 } from "../services/charging-ticket-service";
 import { recordChargingHistory } from "../services/charging-history-service";
 
+type ChargingSpeed = "NORMAL" | "FAST" | "ULTRA_FAST";
+
+const CHARGING_SPEED_MIN_POWER_KW: Record<ChargingSpeed, number> = {
+  NORMAL: 0,
+  FAST: 50,
+  ULTRA_FAST: 120,
+};
+
+const resolveChargingSpeed = (value: unknown): ChargingSpeed => {
+  if (value === "FAST" || value === "ULTRA_FAST" || value === "NORMAL") {
+    return value;
+  }
+
+  return "NORMAL";
+};
+
+const isChargingSpeedSupported = (
+  station: { connectors?: Array<{ type?: string; powerKW?: number }> },
+  chargingSpeed: ChargingSpeed,
+  connectorType?: string | null
+) => {
+  const minPower = CHARGING_SPEED_MIN_POWER_KW[chargingSpeed];
+  const connectors = Array.isArray(station.connectors) ? station.connectors : [];
+  const eligibleConnectors = connectorType
+    ? connectors.filter((connector) => connector.type === connectorType)
+    : connectors;
+
+  return eligibleConnectors.some(
+    (connector) =>
+      typeof connector.powerKW === "number" && connector.powerKW >= minPower
+  );
+};
+
 const addStation = async (req: Request, res: Response, next: NextFunction) => {
   const errors = validationResult(req);
   if (!errors.isEmpty()) {
@@ -187,7 +220,8 @@ const requestChargingTicket = async (
     );
   }
 
-  const { stationId, connectorType, vehicleId } = req.body;
+  const { stationId, connectorType, vehicleId, chargingSpeed, ticketKwh } =
+    req.body;
   const sessionUserId = req.user?.id;
 
   if (!sessionUserId) {
@@ -216,6 +250,22 @@ const requestChargingTicket = async (
     return next(
       new HttpError(
         "Requested connector type is not available at this station.",
+        422
+      )
+    );
+  }
+
+  const resolvedChargingSpeed = resolveChargingSpeed(chargingSpeed);
+  if (
+    !isChargingSpeedSupported(
+      station,
+      resolvedChargingSpeed,
+      typeof connectorType === "string" ? connectorType : null
+    )
+  ) {
+    return next(
+      new HttpError(
+        "Requested charging speed is not supported at this station.",
         422
       )
     );
@@ -254,6 +304,11 @@ const requestChargingTicket = async (
     user: user._id,
     connectorType,
     vehicle: vehicle?._id,
+    chargingSpeed: resolvedChargingSpeed,
+    ticketKwh:
+      typeof ticketKwh === "number" && Number.isFinite(ticketKwh)
+        ? ticketKwh
+        : undefined,
   });
 
   try {
@@ -269,9 +324,14 @@ const requestChargingTicket = async (
     );
   }
 
+  const ticketPayload = await buildChargingTicketPayload(newTicket, {
+    userId: sessionUserId,
+    stationId,
+  });
+
   res.status(201).json({
     message: "Charging ticket requested successfully!",
-    ticket: newTicket.toObject({ getters: true }),
+    ticket: ticketPayload ?? newTicket.toObject({ getters: true }),
   });
 };
 
@@ -445,8 +505,53 @@ const startCharging = async (
     );
   }
 
+  let station;
+  try {
+    station = await Station.findById(stationId);
+  } catch (err) {
+    return next(new HttpError("Starting charging failed, please try again.", 500));
+  }
+
+  if (!station) {
+    return next(new HttpError("Station not found.", 404));
+  }
+
+  if (
+    !station.connectors.some((connector: { type: string }) => {
+      return connector.type === selectedConnectorType;
+    })
+  ) {
+    return next(
+      new HttpError(
+        "Requested connector type is not available at this station.",
+        422
+      )
+    );
+  }
+
+  const resolvedChargingSpeed = resolveChargingSpeed(ticket.chargingSpeed);
+  if (
+    !isChargingSpeedSupported(
+      station,
+      resolvedChargingSpeed,
+      selectedConnectorType
+    )
+  ) {
+    return next(
+      new HttpError(
+        "Requested charging speed is not supported for the selected connector.",
+        422
+      )
+    );
+  }
+
+  if (ticket.chargingSpeed !== resolvedChargingSpeed) {
+    ticket.chargingSpeed = resolvedChargingSpeed;
+  }
+
   let selectedVehicleId: string | null = null;
   let selectedVehicleBatteryPercent: number | null = null;
+  let selectedVehicleBatteryCapacity: number | null = null;
   if (typeof vehicleId === "string") {
     let vehicle;
     try {
@@ -468,6 +573,11 @@ const startCharging = async (
     selectedVehicleBatteryPercent =
       typeof vehicle.batteryPercent === "number"
         ? vehicle.batteryPercent
+        : null;
+    selectedVehicleBatteryCapacity =
+      typeof vehicle.batteryCapacity === "number" &&
+      Number.isFinite(vehicle.batteryCapacity)
+        ? vehicle.batteryCapacity
         : null;
     ticket.vehicle = vehicle._id;
   } else if (ticket.vehicle) {
@@ -492,6 +602,11 @@ const startCharging = async (
         typeof activeVehicle.batteryPercent === "number"
           ? activeVehicle.batteryPercent
           : null;
+      selectedVehicleBatteryCapacity =
+        typeof activeVehicle.batteryCapacity === "number" &&
+        Number.isFinite(activeVehicle.batteryCapacity)
+          ? activeVehicle.batteryCapacity
+          : null;
       ticket.vehicle = activeVehicle._id;
     }
   }
@@ -504,7 +619,7 @@ const startCharging = async (
     try {
       const vehicle = await Vehicle.findOne(
         { _id: selectedVehicleId, owner: sessionUserId },
-        { batteryPercent: 1 }
+        { batteryPercent: 1, batteryCapacity: 1 }
       ).lean();
 
       if (!vehicle) {
@@ -515,6 +630,11 @@ const startCharging = async (
         typeof vehicle.batteryPercent === "number"
           ? vehicle.batteryPercent
           : null;
+      selectedVehicleBatteryCapacity =
+        typeof vehicle.batteryCapacity === "number" &&
+        Number.isFinite(vehicle.batteryCapacity)
+          ? vehicle.batteryCapacity
+          : null;
     } catch (err) {
       return next(
         new HttpError("Starting charging failed, please try again.", 500)
@@ -522,8 +642,29 @@ const startCharging = async (
     }
   }
 
+  let targetBatteryPercent: number | null = null;
+  if (
+    typeof selectedVehicleBatteryPercent === "number" &&
+    Number.isFinite(selectedVehicleBatteryPercent) &&
+    typeof ticket.ticketKwh === "number" &&
+    Number.isFinite(ticket.ticketKwh) &&
+    ticket.ticketKwh > 0 &&
+    typeof selectedVehicleBatteryCapacity === "number" &&
+    Number.isFinite(selectedVehicleBatteryCapacity) &&
+    selectedVehicleBatteryCapacity > 0
+  ) {
+    const percentFromKwh =
+      (ticket.ticketKwh / selectedVehicleBatteryCapacity) * 100;
+    targetBatteryPercent = Math.min(
+      100,
+      Math.max(0, selectedVehicleBatteryPercent + percentFromKwh)
+    );
+  }
+
   const chargingDurationMs = calculateChargingDurationMs(
-    selectedVehicleBatteryPercent
+    selectedVehicleBatteryPercent,
+    ticket.chargingSpeed,
+    targetBatteryPercent
   );
 
   const shouldReserveConnector =
@@ -565,6 +706,9 @@ const startCharging = async (
     Number.isFinite(selectedVehicleBatteryPercent)
   ) {
     ticket.startingBatteryPercent = selectedVehicleBatteryPercent;
+  }
+  if (typeof targetBatteryPercent === "number") {
+    ticket.set("targetBatteryPercent", targetBatteryPercent);
   }
 
   try {

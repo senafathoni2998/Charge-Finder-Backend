@@ -18,6 +18,8 @@ export type StationPhoto = {
 export type StationPricing = {
   currency: string;
   perKwh: number;
+  fastPerKwh?: number;
+  ultraFastPerKwh?: number;
   perMinute?: number;
   parkingFee?: string;
 };
@@ -63,6 +65,8 @@ const stationPricingSchema = new Schema(
   {
     currency: { type: String, required: true },
     perKwh: { type: Number, required: true },
+    fastPerKwh: { type: Number, min: 0 },
+    ultraFastPerKwh: { type: Number, min: 0 },
     perMinute: { type: Number },
     parkingFee: { type: String },
   },
