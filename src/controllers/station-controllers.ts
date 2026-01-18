@@ -471,6 +471,27 @@ const startCharging = async (
     return next(new HttpError("Authentication required.", 401));
   }
 
+  try {
+    const activeChargingTicket = await ChargingTicket.findOne({
+      user: sessionUserId,
+      chargingStatus: "IN_PROGRESS",
+      station: { $ne: stationId },
+    }).select({ _id: 1 });
+
+    if (activeChargingTicket) {
+      return next(
+        new HttpError(
+          "You already have a charging session in progress at another station.",
+          409
+        )
+      );
+    }
+  } catch (err) {
+    return next(
+      new HttpError("Starting charging failed, please try again.", 500)
+    );
+  }
+
   let ticket;
   try {
     ticket = await ChargingTicket.findOne({

@@ -10,6 +10,8 @@ import {
   refreshVehicleBatterySnapshots,
 } from "../services/vehicle-battery-service";
 
+const MAX_VEHICLES_PER_USER = 3;
+
 const addNewVehicle = async (
   req: Request,
   res: Response,
@@ -35,6 +37,22 @@ const addNewVehicle = async (
   if (!user) {
     return next(
       new HttpError("User does not exist, please signup instead.", 422)
+    );
+  }
+
+  let existingVehicleCount = 0;
+  try {
+    existingVehicleCount = await Vehicle.countDocuments({ owner: user._id });
+  } catch (err) {
+    return next(new HttpError("Creating vehicle failed, please try again.", 500));
+  }
+
+  if (existingVehicleCount >= MAX_VEHICLES_PER_USER) {
+    return next(
+      new HttpError(
+        `Vehicle limit reached. Max ${MAX_VEHICLES_PER_USER} vehicles allowed.`,
+        422
+      )
     );
   }
 

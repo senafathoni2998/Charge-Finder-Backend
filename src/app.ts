@@ -13,6 +13,7 @@ import mongoose from "mongoose";
 import { connectRedis } from "./session/redis";
 import sessionMiddleware from "./session/session";
 import { authMiddleware } from "./middleware/authMiddleware";
+import { rateLimitMiddleware } from "./middleware/rateLimit";
 import { initChargingProgressWebSocketServer } from "./realtime/charging-progress";
 import { getStationById, getStations } from "./controllers/station-controllers";
 import vehicle from "./models/vehicle";
@@ -77,6 +78,8 @@ app.use((req: Request, res: Response, next: NextFunction) => {
 
   next();
 });
+
+app.use("/api", rateLimitMiddleware);
 
 app.use("/api/auth", authRoutes);
 
