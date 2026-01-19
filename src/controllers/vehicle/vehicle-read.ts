@@ -9,6 +9,14 @@ import {
   refreshVehicleBatterySnapshots,
 } from "../../services/vehicle-battery-service";
 
+/**
+ * Retrieves all vehicles owned by the authenticated user
+ * 
+ * @purpose Endpoint for users to view their registered vehicles
+ * @authentication Requires active session with user ID
+ * @batteryRefresh Refreshes battery percentage data before returning vehicles
+ * @returns JSON response with array of user's vehicles with current battery status
+ */
 const getVehicles = async (
   req: Request & { user?: { id: string } },
   res: Response,
@@ -35,10 +43,12 @@ const getVehicles = async (
     );
   }
 
+  // Convert to plain objects for manipulation
   const vehicleSnapshots = userWithVehicles.vehicles.map((vehicle: any) =>
     vehicle.toObject({ getters: true })
   );
 
+  // Refresh battery percentage data from active charging sessions
   const refreshedVehicles = await refreshVehicleBatterySnapshots(
     vehicleSnapshots
   );
@@ -48,6 +58,16 @@ const getVehicles = async (
   });
 };
 
+/**
+ * Retrieves a specific vehicle by ID
+ * 
+ * @purpose Endpoint to fetch detailed information about a single vehicle
+ * @authentication Requires active session with user ID
+ * @authorization Verifies user owns the requested vehicle
+ * @batteryRefresh Refreshes battery percentage data before returning vehicle
+ * @params vehicleId - Vehicle ID from URL params
+ * @returns JSON response with vehicle details and current battery status
+ */
 const getVehicleById = async (
   req: Request & { user?: { id: string } },
   res: Response,
@@ -83,6 +103,7 @@ const getVehicleById = async (
     return next(new HttpError("Not authorized to view this vehicle.", 403));
   }
 
+  // Get vehicle data and refresh battery percentage from active charging session
   const vehicleSnapshot = vehicle.toObject({ getters: true });
   const refreshedVehicle = await refreshVehicleBatterySnapshot(vehicleSnapshot);
 

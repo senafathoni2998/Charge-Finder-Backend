@@ -4,6 +4,14 @@ import { validationResult } from "express-validator";
 import HttpError from "../../models/http-error";
 import Station from "../../models/station";
 
+/**
+ * Creates a new charging station
+ * 
+ * @purpose Admin endpoint to add new charging stations to the network
+ * @validates Validates all station details including connectors, pricing, and location
+ * @body name, lat, lng, address, connectors, status, lastUpdatedISO, photos, pricing, amenities, notes
+ * @returns JSON response with created station details
+ */
 const addStation = async (req: Request, res: Response, next: NextFunction) => {
   const errors = validationResult(req);
   if (!errors.isEmpty()) {
@@ -54,6 +62,15 @@ const addStation = async (req: Request, res: Response, next: NextFunction) => {
   });
 };
 
+/**
+ * Updates an existing charging station's information
+ * 
+ * @purpose Admin endpoint to modify station details, availability, pricing, etc.
+ * @validates Validates input and checks station exists
+ * @body stationId, name, lat, lng, address, connectors, status, lastUpdatedISO, photos, pricing, amenities, notes (all optional except stationId)
+ * @returns JSON response with updated station details
+ * @note All fields are optional except stationId - only provided fields are updated
+ */
 const updateStation = async (
   req: Request,
   res: Response,
@@ -152,6 +169,15 @@ const updateStation = async (
   });
 };
 
+/**
+ * Deletes a charging station from the network
+ * 
+ * @purpose Admin endpoint to remove a station from the system
+ * @validates Checks station exists before deletion
+ * @body stationId
+ * @returns JSON response confirming deletion
+ * @warning This does not cascade delete related charging tickets - handle with care
+ */
 const deleteStation = async (
   req: Request,
   res: Response,

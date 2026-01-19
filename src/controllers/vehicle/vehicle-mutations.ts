@@ -8,12 +8,22 @@ import User from "../../models/user";
 
 const MAX_VEHICLES_PER_USER = 3;
 
+/**
+ * Adds a new vehicle to a user's account
+ * 
+ * @purpose Endpoint for users to register a new electric vehicle
+ * @validates Validates input format and enforces vehicle limit per user
+ * @limit Maximum 3 vehicles per user (configurable via MAX_VEHICLES_PER_USER)
+ * @transaction Uses MongoDB session to ensure atomic creation of vehicle and user update
+ * @body name, connector_type, min_power, userId, batteryCapacity (optional)
+ * @returns JSON response with created vehicle details
+ */
 const addNewVehicle = async (
   req: Request,
   res: Response,
   next: NextFunction
 ) => {
-  // Implementation for adding a new vehicle
+  // Validate request data
   const errors = validationResult(req);
   if (!errors.isEmpty()) {
     return next(
@@ -36,6 +46,7 @@ const addNewVehicle = async (
     );
   }
 
+  // Enforce vehicle limit per user
   let existingVehicleCount = 0;
   try {
     existingVehicleCount = await Vehicle.countDocuments({ owner: user._id });
@@ -62,6 +73,7 @@ const addNewVehicle = async (
     newVehicle.batteryCapacity = batteryCapacity;
   }
 
+  // Create vehicle and update user in a transaction for data consistency
   try {
     const sess = await mongoose.startSession();
     sess.startTransaction();
@@ -79,6 +91,15 @@ const addNewVehicle = async (
     .json({ message: "New vehicle added successfully!", vehicle: newVehicle });
 };
 
+/**
+ * Updates an existing vehicle's details
+ * 
+ * @purpose Endpoint for users to modify their registered vehicle information
+ * @validates Validates input and ensures user owns the vehicle
+ * @authorization Verifies user has permission to update the specified vehicle
+ * @body vehicleId, name (optional), connector_type (optional), min_power (optional), userId, batteryCapacity (optional)
+ * @returns JSON response with updated vehicle details
+ */
 const updateVehicle = async (
   req: Request & { user?: { id: string } },
   res: Response,
@@ -101,6 +122,7 @@ const updateVehicle = async (
     return next(new HttpError("Authentication required.", 401));
   }
 
+  // Verify session user is authorized to update this vehicle
   if (sessionUserId && userId && sessionUserId !== userId) {
     return next(new HttpError("Not authorized to update this vehicle.", 403));
   }
@@ -118,6 +140,7 @@ const updateVehicle = async (
     return next(new HttpError("Vehicle not found.", 404));
   }
 
+  // Verify ownership before allowing update
   if (vehicle.owner.toString() !== effectiveUserId) {
     return next(new HttpError("Not authorized to update this vehicle.", 403));
   }
@@ -152,6 +175,17 @@ const updateVehicle = async (
   });
 };
 
+/**
+ * Sets a vehicle as the active/default vehicle for the user
+ * 
+ * @purpose Endpoint to designate which vehicle is currently in use
+ * @behavior When activating a vehicle, automatically deactivates all other user vehicles
+ * @transaction Uses MongoDB session to ensure only one vehicle is active at a time
+ * @authorization Verifies user owns the vehicle before allowing status change
+ * @body vehicleId, active (boolean), userId
+ * @returns JSON response with updated vehicle details
+ * @note Updates lastBatteryUpdatedAt timestamp when activating vehicle
+ */
 const setActiveVehicle = async (
   req: Request & { user?: { id: string } },
   res: Response,
@@ -196,6 +230,7 @@ const setActiveVehicle = async (
 
   const nextActive = typeof active === "boolean" ? active : true;
 
+  // When activating, deactivate all other vehicles in a transaction
   if (nextActive) {
     const sess = await mongoose.startSession();
     sess.startTransaction();
@@ -234,6 +269,16 @@ const setActiveVehicle = async (
   });
 };
 
+/**
+ * Deletes a vehicle from the user's account
+ * 
+ * @purpose Endpoint for users to remove a registered vehicle
+ * @authorization Verifies user owns the vehicle before allowing deletion
+ * @transaction Uses MongoDB session to ensure atomic deletion from both vehicle and user collections
+ * @cascade Removes vehicle reference from user's vehicles array
+ * @body vehicleId, userId
+ * @returns JSON response confirming deletion
+ */
 const deleteVehicle = async (
   req: Request & { user?: { id: string } },
   res: Response,
@@ -289,6 +334,7 @@ const deleteVehicle = async (
     return next(new HttpError("User not found.", 404));
   }
 
+  // Delete vehicle and update user in a transaction to maintain referential integrity
   try {
     const sess = await mongoose.startSession();
     sess.startTransaction();

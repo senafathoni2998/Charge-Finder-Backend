@@ -6,10 +6,20 @@ import HttpError from "../../models/http-error";
 import Station from "../../models/station";
 import ChargingTicket from "../../models/charging-ticket";
 
+/**
+ * Normalizes query parameter values (handles arrays)
+ * @param value Query parameter value that might be an array or single value
+ * @returns First element if array, otherwise the value itself
+ */
 const normalizeQueryValue = (value: unknown) => {
   return Array.isArray(value) ? value[0] : value;
 };
 
+/**
+ * Parses query parameter to number
+ * @param value Query parameter value to parse
+ * @returns Parsed number if valid, null otherwise
+ */
 const parseQueryNumber = (value: unknown) => {
   const normalized = normalizeQueryValue(value);
   if (typeof normalized !== "string" && typeof normalized !== "number") {
@@ -20,6 +30,11 @@ const parseQueryNumber = (value: unknown) => {
   return Number.isFinite(parsed) ? parsed : null;
 };
 
+/**
+ * Extracts station ID from various formats
+ * @param snapshot Station object snapshot
+ * @returns Station ID as string or null if not found
+ */
 const resolveStationId = (snapshot: Record<string, unknown>) => {
   const stationId = snapshot.id;
   if (typeof stationId === "string") {
@@ -43,6 +58,14 @@ const resolveStationId = (snapshot: Record<string, unknown>) => {
 
 const toRadians = (value: number) => (value * Math.PI) / 180;
 
+/**
+ * Calculates distance between two coordinates using Haversine formula
+ * @param lat1 Latitude of first point
+ * @param lng1 Longitude of first point
+ * @param lat2 Latitude of second point
+ * @param lng2 Longitude of second point
+ * @returns Distance in kilometers, rounded to 2 decimal places
+ */
 const calculateDistanceKm = (
   lat1: number,
   lng1: number,
@@ -66,6 +89,18 @@ type StationPayload = Record<string, unknown> & {
   isChargingHere: boolean;
 };
 
+/**
+ * Retrieves list of charging stations with optional location filtering
+ * 
+ * @purpose Public endpoint to discover available charging stations
+ * @authentication Optional - if authenticated, includes isChargingHere flag for active sessions
+ * @locationFiltering Supports filtering by distance from user location
+ * @query lat, lng (optional) - User coordinates for distance calculation
+ * @query radiusKm (optional) - Maximum distance from user location
+ * @query limit (optional) - Maximum number of stations to return
+ * @returns JSON response with array of stations, sorted by distance if location provided
+ * @note Calculates distance using Haversine formula for accurate results
+ */
 const getStations = async (
   req: Request & { user?: { id: string } },
   res: Response,
@@ -117,6 +152,7 @@ const getStations = async (
 
   const chargingStationIds = new Set<string>();
 
+  // If user is logged in, check which stations they're currently charging at
   if (sessionUserId) {
     try {
       const chargingTickets = await ChargingTicket.find(
@@ -174,6 +210,7 @@ const getStations = async (
     };
   });
 
+  // Apply location-based filtering and sorting if coordinates provided
   if (hasLocation) {
     stationsPayload = stationsPayload.filter(
       (station) => typeof station.distanceKm === "number"
@@ -199,6 +236,15 @@ const getStations = async (
   });
 };
 
+/**
+ * Retrieves detailed information about a specific station
+ * 
+ * @purpose Endpoint to fetch details of a single charging station by ID
+ * @authentication Optional - if authenticated, includes isChargingHere flag
+ * @validates Checks if station ID is a valid MongoDB ObjectId
+ * @params stationId - Station ID from URL params
+ * @returns JSON response with station details and charging status
+ */
 const getStationById = async (
   req: Request & { user?: { id: string } },
   res: Response,
@@ -231,6 +277,7 @@ const getStationById = async (
     return next(new HttpError("Station not found.", 404));
   }
 
+  // Check if user is currently charging at this station
   let isChargingHere = false;
   if (sessionUserId) {
     try {

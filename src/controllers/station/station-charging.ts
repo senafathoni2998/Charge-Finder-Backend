@@ -31,6 +31,11 @@ import {
   resolveChargingSpeed,
 } from "./station-charging-helpers";
 
+/**
+ * Validates and returns connector type from input
+ * @param value Raw connector type value  
+ * @returns Valid connector type or null
+ */
 const resolveConnectorType = (value: unknown) => {
   if (value === "CCS2" || value === "Type2" || value === "CHAdeMO") {
     return value;
@@ -39,6 +44,17 @@ const resolveConnectorType = (value: unknown) => {
   return null;
 };
 
+/**
+ * Creates a new charging ticket request for a station
+ * 
+ * @purpose Endpoint for users to request permission to charge at a station
+ * @validates Verifies station exists, connector type available, and charging speed supported
+ * @authentication Requires active session
+ * @transaction Creates ticket and adds to user's tickets list atomically
+ * @body stationId, connectorType, vehicleId (optional), chargingSpeed, ticketKwh (optional)
+ * @returns JSON response with created ticket details
+ * @note This creates a REQUESTED ticket - user must call startCharging to begin
+ */
 const requestChargingTicket = async (
   req: Request & { user?: { id: string } },
   res: Response,
@@ -166,6 +182,16 @@ const requestChargingTicket = async (
   });
 };
 
+/**
+ * Retrieves the active charging ticket for a specific station
+ * 
+ * @purpose Endpoint to fetch user's current charging session at a station
+ * @authentication Requires active session
+ * @autoCompletion If charging is complete (100%), automatically finalizes ticket
+ * @realtime Ensures charging progress timer is running for in-progress sessions
+ * @params stationId - Station ID from URL params
+ * @returns JSON response with active ticket or null if none exists
+ */
 const getActiveTicketForStation = async (
   req: Request & { user?: { id: string } },
   res: Response,
@@ -286,6 +312,18 @@ const getActiveTicketForStation = async (
   });
 };
 
+/**
+ * Starts a charging session at a station
+ * 
+ * @purpose Endpoint to begin charging after ticket is requested/paid
+ * @validation Checks for conflicting sessions, available connectors, and vehicle requirements
+ * @behavior Reserves connector port, calculates charging duration, updates vehicle status
+ * @realtime Starts progress timer and broadcasts charging started event via WebSocket
+ * @body stationId, connectorType (optional), vehicleId (optional)
+ * @returns JSON response with started charging ticket details
+ * @note Automatically uses active vehicle if vehicleId not provided
+ * @connectorReservation Decrements available ports atomically to prevent overbooking
+ */
 const startCharging = async (
   req: Request & { user?: { id: string } },
   res: Response,
@@ -607,6 +645,16 @@ const startCharging = async (
   });
 };
 
+/**
+ * Updates the progress of an ongoing charging session
+ * 
+ * @purpose Endpoint to refresh charging progress (typically called periodically)
+ * @behavior Calculates current progress, updates vehicle battery percentage
+ * @autoCompletion If progress reaches 100%, automatically finalizes the session
+ * @realtime Broadcasts progress updates via WebSocket to connected clients
+ * @body stationId
+ * @returns JSON response with updated ticket details or completion confirmation
+ */
 const updateChargingProgress = async (
   req: Request & { user?: { id: string } },
   res: Response,
@@ -763,6 +811,16 @@ const updateChargingProgress = async (
   });
 };
 
+/**
+ * Cancels an ongoing charging session
+ * 
+ * @purpose Endpoint for users to stop charging before completion
+ * @behavior Releases connector port, updates vehicle status, records history
+ * @realtime Stops progress timer and broadcasts cancellation event via WebSocket
+ * @body stationId
+ * @returns JSON response confirming cancellation
+ * @note Marks ticket as CANCELLED and records partial charge in history
+ */
 const cancelCharging = async (
   req: Request & { user?: { id: string } },
   res: Response,

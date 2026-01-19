@@ -8,8 +8,18 @@ const jwt = require("jsonwebtoken");
 const bcrypt = require("bcryptjs");
 const { validationResult } = require("express-validator");
 
-// const User = require("../models/user");
-
+/**
+ * Registers a new user account
+ * 
+ * @purpose Public endpoint for new users to create an account
+ * @validates Checks for duplicate email addresses before registration
+ * @security Hashes password with bcrypt (12 salt rounds) before storing
+ * @authentication Generates JWT token and creates session for immediate login after signup
+ * @imageHandling Supports optional profile image upload during registration
+ * @body name, email, password, region (optional)
+ * @file Profile image file (optional, handled by multer middleware)
+ * @returns JSON response with user details and JWT token (password excluded)
+ */
 const signup = async (req: Request, res: Response, next: NextFunction) => {
   const errors = validationResult(req);
   console.log("Validation Errors:", errors.array());
@@ -20,6 +30,7 @@ const signup = async (req: Request, res: Response, next: NextFunction) => {
   }
   const { name, email, password, region } = req.body;
 
+  // Check if user with this email already exists
   let existingUser;
   try {
     existingUser = await User.findOne({ email });
@@ -33,6 +44,7 @@ const signup = async (req: Request, res: Response, next: NextFunction) => {
     );
   }
 
+  // Hash password for secure storage
   let hashedPassword;
 
   try {
@@ -57,6 +69,7 @@ const signup = async (req: Request, res: Response, next: NextFunction) => {
     return next(new HttpError("Signing up failed, please try again 1.", 500));
   }
 
+  // Generate JWT token for authentication
   let token;
   try {
     token = jwt.sign(
@@ -74,6 +87,7 @@ const signup = async (req: Request, res: Response, next: NextFunction) => {
 
   const userData = { ...userWithoutPassword, token };
 
+  // Create session for the new user
   req.session.regenerate((err) => {
     if (err) return res.status(500).json({ message: "Session error" });
 
@@ -93,6 +107,18 @@ const signup = async (req: Request, res: Response, next: NextFunction) => {
   //     .json({ message: "User created successfully!", user: userData });
 };
 
+/**
+ * Creates a new admin user account
+ * 
+ * @purpose Internal/protected endpoint to create administrator accounts
+ * @validates Checks for duplicate email addresses before creation
+ * @security Hashes password with bcrypt (12 salt rounds), sets role to 'admin'
+ * @imageHandling Supports optional profile image upload during admin creation
+ * @body name, email, password, region (optional)
+ * @file Profile image file (optional, handled by multer middleware)
+ * @returns JSON response with admin user details (password excluded)
+ * @note Does NOT create session or token (typically used for seeding or admin operations)
+ */
 const createAdmin = async (req: Request, res: Response, next: NextFunction) => {
   const errors = validationResult(req);
   if (!errors.isEmpty()) {
@@ -103,6 +129,7 @@ const createAdmin = async (req: Request, res: Response, next: NextFunction) => {
 
   const { name, email, password, region } = req.body;
 
+  // Check if user with this email already exists
   let existingUser;
   try {
     existingUser = await User.findOne({ email });
@@ -114,6 +141,7 @@ const createAdmin = async (req: Request, res: Response, next: NextFunction) => {
     return next(new HttpError("User exists already.", 422));
   }
 
+  // Hash password for secure storage
   let hashedPassword;
   try {
     hashedPassword = await bcrypt.hash(password, 12);
@@ -148,6 +176,16 @@ const createAdmin = async (req: Request, res: Response, next: NextFunction) => {
   });
 };
 
+/**
+ * Authenticates a user and creates a session
+ * 
+ * @purpose Public endpoint for existing users to log into their account
+ * @validates Verifies email format and password through express-validator
+ * @security Compares provided password with hashed password using bcrypt
+ * @authentication Generates JWT token and regenerates session on successful login
+ * @body email, password
+ * @returns JSON response with user details and JWT token (password excluded)
+ */
 const login = async (req: Request, res: Response, next: NextFunction) => {
   const errors = validationResult(req);
   if (!errors.isEmpty()) {
@@ -199,6 +237,7 @@ const login = async (req: Request, res: Response, next: NextFunction) => {
     );
   }
 
+  // Generate JWT token for authenticated session
   let token;
   try {
     token = jwt.sign(
@@ -222,6 +261,7 @@ const login = async (req: Request, res: Response, next: NextFunction) => {
 
   const userData = { id: identifiedUser.id, ...userWithoutPassword, token };
 
+  // Regenerate session for security and store user info
   req.session.regenerate((err) => {
     if (err) return res.status(500).json({ message: "Session error" });
 
@@ -240,10 +280,16 @@ const login = async (req: Request, res: Response, next: NextFunction) => {
   // res.status(200).json({ message: "Logged in successfully!", user: userData });
 };
 
+/**
+ * Logs out a user by destroying their session
+ * 
+ * @purpose Endpoint to end user's authenticated session
+ * @security Destroys server-side session and clears session cookie
+ * @returns JSON response confirming logout
+ * @note Client should also delete JWT token from local storage
+ */
 const logout = async (req: Request, res: Response, next: NextFunction) => {
-  // Since JWT is stateless, logout can be handled on the client side by deleting the token.
-  // Optionally, you can implement token blacklisting on the server side if needed.
-  // res.status(200).json({ message: "Logged out successfully!" });
+  // Destroy session and clear cookie
   req.session.destroy((err) => {
     if (err) return res.status(500).json({ message: "Logout failed" });
 
@@ -252,6 +298,13 @@ const logout = async (req: Request, res: Response, next: NextFunction) => {
   });
 };
 
+/**
+ * Retrieves current session information
+ * 
+ * @purpose Endpoint to check if user is logged in and get session details
+ * @returns JSON response with session ID, user info, and login status
+ * @note Used by frontend to restore authentication state on page reload
+ */
 const getSession = (req: Request, res: Response) => {
   const sessionUser = req.session?.user ?? null;
   res.status(200).json({
@@ -261,6 +314,14 @@ const getSession = (req: Request, res: Response) => {
   });
 };
 
+/**
+ * Helper function to extract user from session
+ * 
+ * @purpose Utility to get session user data from request object
+ * @param req Express request object with session
+ * @returns User object from session or null if not logged in
+ * @note Internal helper function (not exported as route handler)
+ */
 const getSessionUser = (req: Request) => {
   return req.session?.user || null;
 };
