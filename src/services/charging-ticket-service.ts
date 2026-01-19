@@ -1,3 +1,28 @@
+/**
+ * ⚡ CHARGING TICKET SERVICE
+ * 
+ * This service handles all aspects of the EV (Electric Vehicle) charging workflow,
+ * including battery calculations, charging progress tracking, and ticket management.
+ * 
+ * ## EV CHARGING WORKFLOW:
+ * 1. **Request Ticket**: User requests charging at a station
+ * 2. **Start Charging**: User plugs in and begins charging session
+ * 3. **Track Progress**: System monitors charging progress in real-time
+ * 4. **Complete/Cancel**: Session ends when complete or user cancels
+ * 
+ * ## KEY CONCEPTS:
+ * - **Charging Speed**: NORMAL (slowest), FAST, ULTRA_FAST (fastest)
+ * - **Battery Percentage**: Vehicle battery level (0-100%)
+ * - **Charging Duration**: Time to charge from current to target battery level
+ * - **Progress Percent**: How much of charging session is complete (0-100%)
+ * - **Ticket**: Record of a charging session request/in-progress
+ * 
+ * ## BATTERY CALCULATIONS:
+ * - Duration depends on: current battery %, target battery %, charging speed
+ * - Progress = (time elapsed / total duration) × 100
+ * - Current battery = starting % + (progress × battery to charge)
+ */
+
 import mongoose from "mongoose";
 
 import ChargingTicket from "../models/charging-ticket";
@@ -9,16 +34,45 @@ import {
   refreshVehicleBatterySnapshot,
 } from "./vehicle-battery-service";
 
+// ============================================================================
+// CHARGING SPEED & DURATION CONFIGURATION
+// ============================================================================
+
+/**
+ * Defines the three charging speed levels available for EV charging.
+ * Different speeds affect charging time and cost.
+ */
 export type ChargingSpeed = "NORMAL" | "FAST" | "ULTRA_FAST";
 
+/**
+ * Maximum charging duration for each speed level (in milliseconds).
+ * 
+ * These represent the time to charge from 0% to 100% battery:
+ * - NORMAL: 7 minutes (slower charging, typically cheaper)
+ * - FAST: 5 minutes (moderate speed, moderate cost)
+ * - ULTRA_FAST: 3 minutes (fastest charging, typically more expensive)
+ * 
+ * Note: Actual duration is calculated based on current battery level
+ * and may be shorter if battery isn't empty.
+ */
 const CHARGING_SPEED_MAX_DURATION_MS: Record<ChargingSpeed, number> = {
-  NORMAL: 7 * 60 * 1000,
-  FAST: 5 * 60 * 1000,
-  ULTRA_FAST: 3 * 60 * 1000,
+  NORMAL: 7 * 60 * 1000,      // 7 minutes in milliseconds
+  FAST: 5 * 60 * 1000,        // 5 minutes in milliseconds
+  ULTRA_FAST: 3 * 60 * 1000,  // 3 minutes in milliseconds
 };
 
+/**
+ * Default charging duration used when speed is not specified.
+ * Defaults to NORMAL speed (7 minutes).
+ */
 export const CHARGING_DURATION_MS = CHARGING_SPEED_MAX_DURATION_MS.NORMAL;
-export const CHARGING_PERCENT_INTERVAL_MS = 30 * 1000;
+
+/**
+ * How often to update charging progress (in milliseconds).
+ * Every 30 seconds, the system recalculates and broadcasts progress.
+ */
+export const CHARGING_PERCENT_INTERVAL_MS = 30 * 1000; // 30 seconds
+
 
 const clampBatteryPercent = (value: number) => {
   if (!Number.isFinite(value)) {
