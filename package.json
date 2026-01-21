@@ -5,7 +5,7 @@
   "scripts": {
     "start": "nodemon --exec ts-node --files src/app.ts",
     "backfill:battery-capacity": "ts-node --files src/scripts/backfill-battery-capacity.ts",
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "test": "jest"
   },
   "keywords": [],
   "author": "",
@@ -30,10 +30,13 @@
     "@types/connect-redis": "^0.0.23",
     "@types/express": "^5.0.6",
     "@types/express-session": "^1.18.2",
+    "@types/jest": "^30.0.0",
     "@types/multer": "^2.0.0",
     "@types/node": "^25.0.3",
     "@types/ws": "^8.18.1",
+    "jest": "^30.2.0",
     "nodemon": "^3.1.11",
+    "ts-jest": "^29.4.6",
     "ts-node": "^10.9.2",
     "typescript": "^5.9.3"
   }
