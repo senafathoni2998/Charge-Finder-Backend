@@ -326,9 +326,10 @@ const getSessionUser = (req: Request) => {
   return req.session?.user || null;
 };
 
-exports.signup = signup;
-exports.login = login;
-exports.logout = logout;
-exports.createAdmin = createAdmin;
-
-exports.getSession = getSession;
+export {
+  signup,
+  login,
+  logout,
+  createAdmin,
+  getSession,
+};

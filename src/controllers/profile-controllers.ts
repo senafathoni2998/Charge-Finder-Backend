@@ -333,7 +333,9 @@ const getChargingHistory = async (
   res.status(200).json({ history });
 };
 
-exports.passwordUpdate = passwordUpdate;
-exports.profileUpdate = profileUpdate;
-exports.getProfile = getProfile;
-exports.getChargingHistory = getChargingHistory;
+export {
+  passwordUpdate,
+  profileUpdate,
+  getProfile,
+  getChargingHistory,
+};

@@ -288,7 +288,9 @@ const deleteUser = async (req: Request, res: Response, next: NextFunction) => {
   res.status(200).json({ message: "User deleted successfully!" });
 };
 
-exports.getUsers = getUsers;
-exports.createUser = createUser;
-exports.updateUser = updateUser;
-exports.deleteUser = deleteUser;
+export {
+  getUsers,
+  createUser,
+  updateUser,
+  deleteUser,
+};
