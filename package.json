@@ -5,7 +5,8 @@
   "scripts": {
     "start": "nodemon --exec ts-node --files src/app.ts",
     "backfill:battery-capacity": "ts-node --files src/scripts/backfill-battery-capacity.ts",
-    "test": "jest"
+    "test": "jest",
+    "test:ci": "jest --ci --runInBand"
   },
   "keywords": [],
   "author": "",
