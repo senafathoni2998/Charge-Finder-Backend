@@ -55,25 +55,31 @@ app.use((req: Request, res: Response, next: NextFunction) => {
 
   const isDev = process.env.NODE_ENV !== "production";
 
+  // Only set CORS headers if origin is allowed or in dev mode
   if (origin && (isDev || allowedOrigins.includes(origin))) {
     res.setHeader("Access-Control-Allow-Origin", origin);
+    res.setHeader("Access-Control-Allow-Credentials", "true");
     res.setHeader("Vary", "Origin");
+
+    const requestHeaders = req.headers["access-control-request-headers"];
+    res.setHeader(
+      "Access-Control-Allow-Headers",
+      typeof requestHeaders === "string"
+        ? requestHeaders
+        : "Origin, X-Requested-With, Content-Type, Accept, Authorization"
+    );
+    res.setHeader(
+      "Access-Control-Allow-Methods",
+      "GET, POST, PATCH, DELETE, OPTIONS"
+    );
   }
-  res.setHeader("Access-Control-Allow-Credentials", "true");
-  const requestHeaders = req.headers["access-control-request-headers"];
-  res.setHeader(
-    "Access-Control-Allow-Headers",
-    typeof requestHeaders === "string"
-      ? requestHeaders
-      : "Origin, X-Requested-With, Content-Type, Accept, Authorization"
-  );
-  res.setHeader(
-    "Access-Control-Allow-Methods",
-    "GET, POST, PATCH, DELETE, OPTIONS"
-  );
 
   if (req.method === "OPTIONS") {
-    return res.sendStatus(204);
+    if (origin && (isDev || allowedOrigins.includes(origin))) {
+      return res.sendStatus(204);
+    }
+    // Origin not allowed - reject preflight
+    return res.status(403).json({ message: "Origin not allowed" });
   }
 
   next();
