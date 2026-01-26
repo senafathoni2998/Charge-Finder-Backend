@@ -17,6 +17,7 @@ const sessionMiddleware = session({
   secret: process.env.SESSION_SECRET as string,
   resave: false,
   saveUninitialized: false,
+  proxy: process.env.NODE_ENV === "production",
   cookie: {
     httpOnly: true,
     secure: process.env.NODE_ENV === "production",

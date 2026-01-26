@@ -10,7 +10,7 @@ const { validationResult } = require("express-validator");
 
 /**
  * Registers a new user account
- * 
+ *
  * @purpose Public endpoint for new users to create an account
  * @validates Checks for duplicate email addresses before registration
  * @security Hashes password with bcrypt (12 salt rounds) before storing
@@ -25,7 +25,7 @@ const signup = async (req: Request, res: Response, next: NextFunction) => {
   console.log("Validation Errors:", errors.array());
   if (!errors.isEmpty()) {
     return next(
-      new HttpError("Invalid inputs passed, please check your data.", 422)
+      new HttpError("Invalid inputs passed, please check your data.", 422),
     );
   }
   const { name, email, password, region } = req.body;
@@ -40,7 +40,7 @@ const signup = async (req: Request, res: Response, next: NextFunction) => {
 
   if (existingUser) {
     return next(
-      new HttpError("User exists already, please login instead.", 422)
+      new HttpError("User exists already, please login instead.", 422),
     );
   }
 
@@ -75,7 +75,7 @@ const signup = async (req: Request, res: Response, next: NextFunction) => {
     token = jwt.sign(
       { userId: newUser.id, email: newUser.email, name: newUser.email },
       process.env.SECRET_KEY,
-      { expiresIn: "1d" }
+      { expiresIn: "1d" },
     );
   } catch (err) {
     return next(new HttpError("Signing up failed, please try again 2.", 500));
@@ -109,7 +109,7 @@ const signup = async (req: Request, res: Response, next: NextFunction) => {
 
 /**
  * Creates a new admin user account
- * 
+ *
  * @purpose Internal/protected endpoint to create administrator accounts
  * @validates Checks for duplicate email addresses before creation
  * @security Hashes password with bcrypt (12 salt rounds), sets role to 'admin'
@@ -123,7 +123,7 @@ const createAdmin = async (req: Request, res: Response, next: NextFunction) => {
   const errors = validationResult(req);
   if (!errors.isEmpty()) {
     return next(
-      new HttpError("Invalid inputs passed, please check your data.", 422)
+      new HttpError("Invalid inputs passed, please check your data.", 422),
     );
   }
 
@@ -147,7 +147,7 @@ const createAdmin = async (req: Request, res: Response, next: NextFunction) => {
     hashedPassword = await bcrypt.hash(password, 12);
   } catch (err) {
     return next(
-      new HttpError("Could not create admin, please try again.", 500)
+      new HttpError("Could not create admin, please try again.", 500),
     );
   }
 
@@ -178,7 +178,7 @@ const createAdmin = async (req: Request, res: Response, next: NextFunction) => {
 
 /**
  * Authenticates a user and creates a session
- * 
+ *
  * @purpose Public endpoint for existing users to log into their account
  * @validates Verifies email format and password through express-validator
  * @security Compares provided password with hashed password using bcrypt
@@ -191,7 +191,7 @@ const login = async (req: Request, res: Response, next: NextFunction) => {
   if (!errors.isEmpty()) {
     // If validation fails, forward a 422 error to the error handler
     return next(
-      new HttpError("Invalid inputs passed, please check your data.", 422)
+      new HttpError("Invalid inputs passed, please check your data.", 422),
     );
   }
 
@@ -204,7 +204,7 @@ const login = async (req: Request, res: Response, next: NextFunction) => {
   } catch (err) {
     const error = new HttpError(
       "Logging in failed, please try again later.",
-      500
+      500,
     );
     return next(error);
   }
@@ -212,7 +212,7 @@ const login = async (req: Request, res: Response, next: NextFunction) => {
   //* If user is not found or password does not match, forward a 401 error
   if (!identifiedUser) {
     return next(
-      new HttpError("Invalid credentials, could not log you in.", 401)
+      new HttpError("Invalid credentials, could not log you in.", 401),
     );
   }
 
@@ -225,7 +225,7 @@ const login = async (req: Request, res: Response, next: NextFunction) => {
     // If an error occurs during password comparison, forward a 500 error
     const error = new HttpError(
       "Could not log you in, please check your credentials and try again",
-      500
+      500,
     );
     return next(error);
   }
@@ -233,7 +233,7 @@ const login = async (req: Request, res: Response, next: NextFunction) => {
   // If password does not match, forward a 401 error (unauthorized)
   if (!isValidPassword) {
     return next(
-      new HttpError("Invalid credentials, could not log you in.", 401)
+      new HttpError("Invalid credentials, could not log you in.", 401),
     );
   }
 
@@ -247,7 +247,7 @@ const login = async (req: Request, res: Response, next: NextFunction) => {
         name: identifiedUser.name,
       },
       process.env.SECRET_KEY,
-      { expiresIn: "1d" }
+      { expiresIn: "1d" },
     );
   } catch (err) {
     const error = new HttpError("Could not log you in, please try again", 500);
@@ -271,9 +271,14 @@ const login = async (req: Request, res: Response, next: NextFunction) => {
       role: identifiedUser.role ?? "user",
     };
 
-    res
-      .status(200)
-      .json({ message: "Logged in successfully!", user: userData });
+    req.session.save((err) => {
+      if (err) return next(new HttpError("Session save error", 500));
+
+      return res.status(200).json({
+        message: "Logged in successfully!",
+        user: userData,
+      });
+    });
   });
 
   //* Respond with success message and user data (without password)
@@ -282,7 +287,7 @@ const login = async (req: Request, res: Response, next: NextFunction) => {
 
 /**
  * Logs out a user by destroying their session
- * 
+ *
  * @purpose Endpoint to end user's authenticated session
  * @security Destroys server-side session and clears session cookie
  * @returns JSON response confirming logout
@@ -300,7 +305,7 @@ const logout = async (req: Request, res: Response, next: NextFunction) => {
 
 /**
  * Retrieves current session information
- * 
+ *
  * @purpose Endpoint to check if user is logged in and get session details
  * @returns JSON response with session ID, user info, and login status
  * @note Used by frontend to restore authentication state on page reload
@@ -316,7 +321,7 @@ const getSession = (req: Request, res: Response) => {
 
 /**
  * Helper function to extract user from session
- * 
+ *
  * @purpose Utility to get session user data from request object
  * @param req Express request object with session
  * @returns User object from session or null if not logged in
@@ -326,10 +331,4 @@ const getSessionUser = (req: Request) => {
   return req.session?.user || null;
 };
 
-export {
-  signup,
-  login,
-  logout,
-  createAdmin,
-  getSession,
-};
+export { signup, login, logout, createAdmin, getSession };
