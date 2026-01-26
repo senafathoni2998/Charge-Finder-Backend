@@ -94,6 +94,13 @@ app.use("/api/auth", authRoutes);
 app.get("/api/stations", getStations);
 app.get("/api/stations/:stationId", getStationById);
 
+app.get("/api/debug-secure", (req, res) => {
+  res.json({
+    secure: req.secure,
+    xfproto: req.headers["x-forwarded-proto"],
+  });
+});
+
 // Protect everything below
 app.use(authMiddleware);
 
