@@ -81,6 +81,7 @@ describe("auth-controllers", () => {
         session: {
             regenerate: jest.fn((cb) => cb(null)),
             destroy: jest.fn((cb) => cb(null)),
+            save: jest.fn((cb) => cb(null)),
             user: null
         }
     };
