@@ -21,6 +21,13 @@ const { validationResult } = require("express-validator");
  * @returns JSON response with user details and JWT token (password excluded)
  */
 const signup = async (req: Request, res: Response, next: NextFunction) => {
+  // Check if signup is disabled via environment variable
+  if (process.env.DISABLE_SIGNUP === "true") {
+    return next(
+      new HttpError("Service unavailable. User registration is currently disabled.", 503),
+    );
+  }
+
   const errors = validationResult(req);
   console.log("Validation Errors:", errors.array());
   if (!errors.isEmpty()) {
