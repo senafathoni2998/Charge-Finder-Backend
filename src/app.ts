@@ -88,18 +88,19 @@ app.use((req: Request, res: Response, next: NextFunction) => {
 
 app.use("/api", rateLimitMiddleware);
 
+app.get("/api/debug-secure", (req, res) => {
+  res.json({
+    secure: req.secure,
+    xfproto: req.headers["x-forwarded-proto"],
+    host: req.headers.host,
+  });
+});
+
 app.use("/api/auth", authRoutes);
 
 // Public stations list (no login required).
 app.get("/api/stations", getStations);
 app.get("/api/stations/:stationId", getStationById);
-
-app.get("/api/debug-secure", (req, res) => {
-  res.json({
-    secure: req.secure,
-    xfproto: req.headers["x-forwarded-proto"],
-  });
-});
 
 // Protect everything below
 app.use(authMiddleware);
