@@ -19,6 +19,7 @@ import { getStationById, getStations } from "./controllers/station-controllers";
 import vehicle from "./models/vehicle";
 import { ensureAdminUser } from "./startup/ensure-admin";
 import { ensureStationsSeeded } from "./startup/ensure-stations";
+import { ensureDemoData } from "./startup/ensure-demo-data";
 import { ensureVehicleBatteryDefaults } from "./services/vehicle-battery-service";
 import HttpError from "./models/http-error";
 import { IMAGE_PUBLIC_ROOT, IMAGE_UPLOAD_ROOT } from "./utils/image-paths";
@@ -136,6 +137,7 @@ mongoose
       console.log("✅ Connected to MongoDB");
       await ensureAdminUser();
       await ensureStationsSeeded();
+      await ensureDemoData();
       try {
         await ensureVehicleBatteryDefaults();
       } catch (err) {
