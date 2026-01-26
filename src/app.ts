@@ -35,6 +35,7 @@ app.use(bodyParser.json());
 
 app.use(`/${IMAGE_PUBLIC_ROOT}`, express.static(IMAGE_UPLOAD_ROOT));
 
+app.set("trust proxy", 1);
 // ✅ session middleware now sees SESSION_SECRET
 app.use(sessionMiddleware);
 
@@ -66,11 +67,11 @@ app.use((req: Request, res: Response, next: NextFunction) => {
       "Access-Control-Allow-Headers",
       typeof requestHeaders === "string"
         ? requestHeaders
-        : "Origin, X-Requested-With, Content-Type, Accept, Authorization"
+        : "Origin, X-Requested-With, Content-Type, Accept, Authorization",
     );
     res.setHeader(
       "Access-Control-Allow-Methods",
-      "GET, POST, PATCH, DELETE, OPTIONS"
+      "GET, POST, PATCH, DELETE, OPTIONS",
     );
   }
 
@@ -120,7 +121,7 @@ app.use((error: any, req: Request, res: Response, next: NextFunction) => {
 
 mongoose
   .connect(
-    `mongodb+srv://${process.env.DB_USER}:${process.env.DB_PASSWORD}@${process.env.DB_HOST}/?appName=${process.env.DB_NAME}`
+    `mongodb+srv://${process.env.DB_USER}:${process.env.DB_PASSWORD}@${process.env.DB_HOST}/?appName=${process.env.DB_NAME}`,
   )
   .then(() => {
     connectRedis().then(async () => {
