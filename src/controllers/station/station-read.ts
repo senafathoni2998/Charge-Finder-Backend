@@ -373,6 +373,11 @@ const getStations = async (
 
   // Apply location-based filtering and sorting if coordinates provided
   if (hasLocation) {
+    // Preserve stations where user is currently charging before filtering
+    const chargingStations: StationPayload[] = stationsPayload.filter(
+      (station) => station.isChargingHere === true
+    );
+
     stationsPayload = stationsPayload.filter(
       (station) => typeof station.distanceKm === "number"
     );
@@ -389,6 +394,18 @@ const getStations = async (
 
     if (limit !== null) {
       stationsPayload = stationsPayload.slice(0, Math.floor(limit));
+    }
+
+    // Always include stations where user is charging, even if outside radius/limit
+    for (const chargingStation of chargingStations) {
+      if (!stationsPayload.some((s) => {
+        const sid = resolveStationId(s as Record<string, unknown>);
+        const csid = resolveStationId(chargingStation as Record<string, unknown>);
+        return sid && csid && sid === csid;
+      })) {
+        // Add charging station to results (at the end to not interfere with sorted nearby stations)
+        stationsPayload.push(chargingStation);
+      }
     }
   }
 
