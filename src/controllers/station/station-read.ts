@@ -84,6 +84,156 @@ const calculateDistanceKm = (
   return Math.round(earthRadiusKm * c * 100) / 100;
 };
 
+/**
+ * Generates a random coordinate within a specified radius from a center point
+ * @param centerLat Center latitude
+ * @param centerLng Center longitude
+ * @param radiusKm Radius in kilometers
+ * @returns Object with random latitude and longitude
+ */
+const generateRandomCoordinate = (
+  centerLat: number,
+  centerLng: number,
+  radiusKm: number
+) => {
+  // Convert radius from km to degrees (approximately)
+  // 1 degree of latitude ≈ 111 km
+  // 1 degree of longitude ≈ 111 km * cos(latitude)
+  const radiusInDegreesLat = radiusKm / 111;
+
+  // Generate random angle and distance within the radius
+  const angle = Math.random() * 2 * Math.PI;
+  const distance = Math.sqrt(Math.random()) * radiusInDegreesLat; // sqrt for uniform distribution
+
+  const lat = centerLat + distance * Math.cos(angle);
+  const lng = centerLng + (distance * Math.sin(angle)) / Math.cos(toRadians(centerLat));
+
+  return { lat, lng };
+};
+
+/**
+ * Generates demo stations with random coordinates within 20km
+ * @param centerLat Optional center latitude for positioning stations
+ * @param centerLng Optional center longitude for positioning stations
+ * @param count Number of stations to generate
+ * @returns Array of station objects
+ */
+const generateDemoStations = (
+  centerLat: number | null,
+  centerLng: number | null,
+  count: number = 3
+) => {
+  // Default to Jakarta coordinates if no center provided
+  const defaultLat = -6.2088;
+  const defaultLng = 106.8456;
+  const baseLat = centerLat ?? defaultLat;
+  const baseLng = centerLng ?? defaultLng;
+
+  const stationNames = [
+    "Fast Charge Hub",
+    "EV Power Station",
+    "Quick Charge Point",
+    "Green Energy Charger",
+    "Electrify Bay",
+    "Volt Station",
+    "Charge Mate",
+    "Eco Power Hub",
+  ];
+
+  const addresses = [
+    "Main Street District",
+    "Central Avenue",
+    "Park Boulevard",
+    "City Center",
+    "Green Valley Road",
+    "Metro Plaza",
+    "Riverside Drive",
+    "Urban Junction",
+  ];
+
+  const connectorTypes: Array<"CCS2" | "Type2" | "CHAdeMO"> = ["CCS2", "Type2", "CHAdeMO"];
+
+  const statuses: Array<"AVAILABLE" | "BUSY" | "OFFLINE"> = ["AVAILABLE", "BUSY", "OFFLINE"];
+
+  const amenities = [
+    ["Restroom", "Wi-Fi", "24/7"],
+    ["Coffee", "Restroom", "Food court"],
+    ["Wi-Fi", "Restroom", "Shopping"],
+  ];
+
+  const gradients = [
+    "linear-gradient(135deg, rgba(124,92,255,0.55), rgba(0,229,255,0.35))",
+    "linear-gradient(135deg, rgba(0,229,255,0.45), rgba(255,193,7,0.28))",
+    "linear-gradient(135deg, rgba(255,193,7,0.34), rgba(244,67,54,0.22))",
+  ];
+
+  const stations = [];
+  const usedCoordinates = new Set<string>();
+
+  for (let i = 0; i < count; i++) {
+    let coord: { lat: number; lng: number };
+    let coordKey: string;
+
+    // Ensure unique coordinates
+    do {
+      coord = generateRandomCoordinate(baseLat, baseLng, 20); // 20km radius
+      coordKey = `${coord.lat.toFixed(4)},${coord.lng.toFixed(4)}`;
+    } while (usedCoordinates.has(coordKey));
+
+    usedCoordinates.add(coordKey);
+
+    const numConnectors = Math.floor(Math.random() * 2) + 2; // 2-3 connectors
+    const connectors: Array<{ type: "CCS2" | "Type2" | "CHAdeMO"; powerKW: number; ports: number; availablePorts: number }> = [];
+
+    for (let j = 0; j < numConnectors; j++) {
+      const type = connectorTypes[Math.floor(Math.random() * connectorTypes.length)];
+      const existingTypes: string[] = connectors.map((c) => c.type);
+
+      if (!existingTypes.includes(type)) {
+        const powerKW = [22, 50, 60, 100, 150][Math.floor(Math.random() * 5)];
+        const ports = Math.floor(Math.random() * 4) + 1;
+        const availablePorts = Math.floor(Math.random() * (ports + 1));
+
+        connectors.push({
+          type,
+          powerKW,
+          ports,
+          availablePorts,
+        });
+      }
+    }
+
+    const stationName = stationNames[Math.floor(Math.random() * stationNames.length)];
+    const address = addresses[Math.floor(Math.random() * addresses.length)];
+    const status = statuses[Math.floor(Math.random() * statuses.length)];
+
+    stations.push({
+      name: `${stationName} ${i + 1}`,
+      lat: coord.lat,
+      lng: coord.lng,
+      address: `${address}, Area ${i + 1}`,
+      connectors,
+      status,
+      lastUpdatedISO: new Date().toISOString(),
+      photos: [
+        { label: "Entrance", gradient: gradients[0] },
+        { label: "Bays", gradient: gradients[1] },
+        { label: "Payment", gradient: gradients[2] },
+      ],
+      pricing: {
+        currency: "IDR",
+        perKwh: 2700 + Math.floor(Math.random() * 500),
+        fastPerKwh: 3000 + Math.floor(Math.random() * 500),
+        ultraFastPerKwh: 3300 + Math.floor(Math.random() * 500),
+      },
+      amenities: amenities[i % amenities.length],
+      notes: "Demo station created for testing.",
+    });
+  }
+
+  return stations;
+};
+
 type StationPayload = Record<string, unknown> & {
   distanceKm?: number;
   isChargingHere: boolean;
@@ -147,7 +297,18 @@ const getStations = async (
   }
 
   if (!stations || stations.length === 0) {
-    return next(new HttpError("Could not find stations.", 404));
+    // Generate demo stations with random coordinates within 20km
+    const demoStationsData = generateDemoStations(userLat, userLng, 3);
+
+    try {
+      // Save demo stations to MongoDB
+      const createdStations = await Station.insertMany(demoStationsData);
+      stations = createdStations;
+    } catch (err) {
+      return next(
+        new HttpError("Creating demo stations failed, please try again later.", 500)
+      );
+    }
   }
 
   const chargingStationIds = new Set<string>();
