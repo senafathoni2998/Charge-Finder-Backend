@@ -74,7 +74,7 @@ export const createRateLimitMiddleware = (options: RateLimitOptions = {}) => {
     try {
       const currentCount = await redisClient.incr(redisKey);
       if (currentCount === 1) {
-        await redisClient.pexpire(redisKey, limitWindowMs);
+        await redisClient.pExpire(redisKey, limitWindowMs);
       }
 
       const remaining = Math.max(0, limitMax - currentCount);
@@ -82,7 +82,7 @@ export const createRateLimitMiddleware = (options: RateLimitOptions = {}) => {
       res.setHeader("X-RateLimit-Remaining", remaining.toString());
 
       if (currentCount > limitMax) {
-        const ttlMs = await redisClient.pttl(redisKey);
+        const ttlMs = await redisClient.pTtl(redisKey);
         const ttlMsValue = typeof ttlMs === "number" ? ttlMs : null;
         if (ttlMsValue && ttlMsValue > 0) {
           res.setHeader(

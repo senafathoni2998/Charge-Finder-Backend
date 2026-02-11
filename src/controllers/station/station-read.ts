@@ -70,7 +70,7 @@ const calculateDistanceKm = (
   lat1: number,
   lng1: number,
   lat2: number,
-  lng2: number
+  lng2: number,
 ) => {
   const earthRadiusKm = 6371;
   const dLat = toRadians(lat2 - lat1);
@@ -94,7 +94,7 @@ const calculateDistanceKm = (
 const generateRandomCoordinate = (
   centerLat: number,
   centerLng: number,
-  radiusKm: number
+  radiusKm: number,
 ) => {
   // Convert radius from km to degrees (approximately)
   // 1 degree of latitude ≈ 111 km
@@ -106,7 +106,8 @@ const generateRandomCoordinate = (
   const distance = Math.sqrt(Math.random()) * radiusInDegreesLat; // sqrt for uniform distribution
 
   const lat = centerLat + distance * Math.cos(angle);
-  const lng = centerLng + (distance * Math.sin(angle)) / Math.cos(toRadians(centerLat));
+  const lng =
+    centerLng + (distance * Math.sin(angle)) / Math.cos(toRadians(centerLat));
 
   return { lat, lng };
 };
@@ -121,7 +122,7 @@ const generateRandomCoordinate = (
 const generateDemoStations = (
   centerLat: number | null,
   centerLng: number | null,
-  count: number = 3
+  count: number = 3,
 ) => {
   // Default to Jakarta coordinates if no center provided
   const defaultLat = -6.2088;
@@ -151,9 +152,17 @@ const generateDemoStations = (
     "Urban Junction",
   ];
 
-  const connectorTypes: Array<"CCS2" | "Type2" | "CHAdeMO"> = ["CCS2", "Type2", "CHAdeMO"];
+  const connectorTypes: Array<"CCS2" | "Type2" | "CHAdeMO"> = [
+    "CCS2",
+    "Type2",
+    "CHAdeMO",
+  ];
 
-  const statuses: Array<"AVAILABLE" | "BUSY" | "OFFLINE"> = ["AVAILABLE", "BUSY", "OFFLINE"];
+  const statuses: Array<"AVAILABLE" | "BUSY" | "OFFLINE"> = [
+    "AVAILABLE",
+    "BUSY",
+    "OFFLINE",
+  ];
 
   const amenities = [
     ["Restroom", "Wi-Fi", "24/7"],
@@ -183,10 +192,16 @@ const generateDemoStations = (
     usedCoordinates.add(coordKey);
 
     const numConnectors = Math.floor(Math.random() * 2) + 2; // 2-3 connectors
-    const connectors: Array<{ type: "CCS2" | "Type2" | "CHAdeMO"; powerKW: number; ports: number; availablePorts: number }> = [];
+    const connectors: Array<{
+      type: "CCS2" | "Type2" | "CHAdeMO";
+      powerKW: number;
+      ports: number;
+      availablePorts: number;
+    }> = [];
 
     for (let j = 0; j < numConnectors; j++) {
-      const type = connectorTypes[Math.floor(Math.random() * connectorTypes.length)];
+      const type =
+        connectorTypes[Math.floor(Math.random() * connectorTypes.length)];
       const existingTypes: string[] = connectors.map((c) => c.type);
 
       if (!existingTypes.includes(type)) {
@@ -203,7 +218,8 @@ const generateDemoStations = (
       }
     }
 
-    const stationName = stationNames[Math.floor(Math.random() * stationNames.length)];
+    const stationName =
+      stationNames[Math.floor(Math.random() * stationNames.length)];
     const address = addresses[Math.floor(Math.random() * addresses.length)];
     const status = statuses[Math.floor(Math.random() * statuses.length)];
 
@@ -241,7 +257,7 @@ type StationPayload = Record<string, unknown> & {
 
 /**
  * Retrieves list of charging stations with optional location filtering
- * 
+ *
  * @purpose Public endpoint to discover available charging stations
  * @authentication Optional - if authenticated, includes isChargingHere flag for active sessions
  * @locationFiltering Supports filtering by distance from user location
@@ -254,7 +270,7 @@ type StationPayload = Record<string, unknown> & {
 const getStations = async (
   req: Request & { user?: { id: string } },
   res: Response,
-  next: NextFunction
+  next: NextFunction,
 ) => {
   const sessionUserId = req.user?.id ?? req.session?.user?.id;
 
@@ -268,7 +284,7 @@ const getStations = async (
     (userLng !== null && userLat === null)
   ) {
     return next(
-      new HttpError("Both lat and lng query params are required.", 422)
+      new HttpError("Both lat and lng query params are required.", 422),
     );
   }
 
@@ -292,23 +308,8 @@ const getStations = async (
     stations = await Station.find();
   } catch (err) {
     return next(
-      new HttpError("Fetching stations failed, please try again later.", 500)
+      new HttpError("Fetching stations failed, please try again later.", 500),
     );
-  }
-
-  if (!stations || stations.length === 0) {
-    // Generate demo stations with random coordinates within 20km
-    const demoStationsData = generateDemoStations(userLat, userLng, 3);
-
-    try {
-      // Save demo stations to MongoDB
-      const createdStations = await Station.insertMany(demoStationsData);
-      stations = createdStations;
-    } catch (err) {
-      return next(
-        new HttpError("Creating demo stations failed, please try again later.", 500)
-      );
-    }
   }
 
   const chargingStationIds = new Set<string>();
@@ -322,14 +323,12 @@ const getStations = async (
           status: { $in: ["REQUESTED", "PAID"] },
           chargingStatus: "IN_PROGRESS",
         },
-        { station: 1 }
+        { station: 1 },
       ).lean();
 
       for (const ticket of chargingTickets) {
         const stationId =
-          ticket.station?.toString?.() ??
-          ticket.station?.id ??
-          ticket.station;
+          ticket.station?.toString?.() ?? ticket.station?.id ?? ticket.station;
         if (stationId) {
           chargingStationIds.add(stationId.toString());
         }
@@ -338,8 +337,8 @@ const getStations = async (
       return next(
         new HttpError(
           "Fetching charging status failed, please try again later.",
-          500
-        )
+          500,
+        ),
       );
     }
   }
@@ -360,7 +359,7 @@ const getStations = async (
             userLat as number,
             userLng as number,
             stationLat,
-            stationLng
+            stationLng,
           )
         : undefined;
 
@@ -375,22 +374,20 @@ const getStations = async (
   if (hasLocation) {
     // Preserve stations where user is currently charging before filtering
     const chargingStations: StationPayload[] = stationsPayload.filter(
-      (station) => station.isChargingHere === true
+      (station) => station.isChargingHere === true,
     );
 
     stationsPayload = stationsPayload.filter(
-      (station) => typeof station.distanceKm === "number"
+      (station) => typeof station.distanceKm === "number",
     );
 
     if (radiusKm !== null) {
       stationsPayload = stationsPayload.filter(
-        (station) => (station.distanceKm ?? 0) <= radiusKm
+        (station) => (station.distanceKm ?? 0) <= radiusKm,
       );
     }
 
-    stationsPayload.sort(
-      (a, b) => (a.distanceKm ?? 0) - (b.distanceKm ?? 0)
-    );
+    stationsPayload.sort((a, b) => (a.distanceKm ?? 0) - (b.distanceKm ?? 0));
 
     if (limit !== null) {
       stationsPayload = stationsPayload.slice(0, Math.floor(limit));
@@ -398,14 +395,71 @@ const getStations = async (
 
     // Always include stations where user is charging, even if outside radius/limit
     for (const chargingStation of chargingStations) {
-      if (!stationsPayload.some((s) => {
-        const sid = resolveStationId(s as Record<string, unknown>);
-        const csid = resolveStationId(chargingStation as Record<string, unknown>);
-        return sid && csid && sid === csid;
-      })) {
+      if (
+        !stationsPayload.some((s) => {
+          const sid = resolveStationId(s as Record<string, unknown>);
+          const csid = resolveStationId(
+            chargingStation as Record<string, unknown>,
+          );
+          return sid && csid && sid === csid;
+        })
+      ) {
         // Add charging station to results (at the end to not interfere with sorted nearby stations)
         stationsPayload.push(chargingStation);
       }
+    }
+  }
+
+  // Only create demo stations if database is completely empty
+  if (!stationsPayload || stationsPayload.length === 0) {
+    // Generate demo stations with random coordinates within 20km
+    const demoStationsData = generateDemoStations(userLat, userLng, 3);
+
+    try {
+      // Save demo stations to MongoDB
+      const createdStations = await Station.insertMany(demoStationsData);
+      stationsPayload = createdStations.map((station) => {
+        const stationSnapshot = station.toObject({ getters: true }) as Record<
+          string,
+          unknown
+        >;
+        const stationId = resolveStationId(stationSnapshot);
+        const stationLat =
+          typeof stationSnapshot.lat === "number" ? stationSnapshot.lat : null;
+        const stationLng =
+          typeof stationSnapshot.lng === "number" ? stationSnapshot.lng : null;
+        const demoDistanceKm =
+          hasLocation && stationLat !== null && stationLng !== null
+            ? calculateDistanceKm(
+                userLat as number,
+                userLng as number,
+                stationLat,
+                stationLng,
+              )
+            : undefined;
+
+        return {
+          ...stationSnapshot,
+          isChargingHere: false,
+          ...(hasLocation && demoDistanceKm !== undefined
+            ? { distanceKm: demoDistanceKm }
+            : {}),
+        };
+      });
+
+      // Sort demo stations by distance if location provided
+      if (hasLocation) {
+        stationsPayload.sort(
+          (a, b) => (a.distanceKm ?? 0) - (b.distanceKm ?? 0),
+        );
+      }
+    } catch (err) {
+      return next(
+        new HttpError(
+          "Creating demo stations failed, please try again later.",
+          500,
+        ),
+      );
     }
   }
 
@@ -416,7 +470,7 @@ const getStations = async (
 
 /**
  * Retrieves detailed information about a specific station
- * 
+ *
  * @purpose Endpoint to fetch details of a single charging station by ID
  * @authentication Optional - if authenticated, includes isChargingHere flag
  * @validates Checks if station ID is a valid MongoDB ObjectId
@@ -426,12 +480,12 @@ const getStations = async (
 const getStationById = async (
   req: Request & { user?: { id: string } },
   res: Response,
-  next: NextFunction
+  next: NextFunction,
 ) => {
   const errors = validationResult(req);
   if (!errors.isEmpty()) {
     return next(
-      new HttpError("Invalid inputs passed, please check your data.", 422)
+      new HttpError("Invalid inputs passed, please check your data.", 422),
     );
   }
 
@@ -447,7 +501,7 @@ const getStationById = async (
     station = await Station.findById(stationId);
   } catch (err) {
     return next(
-      new HttpError("Fetching station failed, please try again later.", 500)
+      new HttpError("Fetching station failed, please try again later.", 500),
     );
   }
 
@@ -466,7 +520,7 @@ const getStationById = async (
           status: { $in: ["REQUESTED", "PAID"] },
           chargingStatus: "IN_PROGRESS",
         },
-        { _id: 1 }
+        { _id: 1 },
       ).lean();
 
       isChargingHere = Boolean(chargingTicket);
@@ -474,8 +528,8 @@ const getStationById = async (
       return next(
         new HttpError(
           "Fetching charging status failed, please try again later.",
-          500
-        )
+          500,
+        ),
       );
     }
   }
