@@ -3,16 +3,16 @@ import { createRateLimitMiddleware, rateLimitMiddleware } from "../rateLimit";
 
 // Create mock functions for redis client
 const mockIncr = jest.fn();
-const mockPexpire = jest.fn();
-const mockPttl = jest.fn();
+const mockPExpire = jest.fn();
+const mockPTtl = jest.fn();
 
 jest.mock("../../session/redis", () => ({
   __esModule: true,
   default: {
     isOpen: true,
     incr: (...args: any[]) => mockIncr(...args),
-    pexpire: (...args: any[]) => mockPexpire(...args),
-    pttl: (...args: any[]) => mockPttl(...args),
+    pExpire: (...args: any[]) => mockPExpire(...args),
+    pTtl: (...args: any[]) => mockPTtl(...args),
   },
 }));
 
@@ -99,7 +99,7 @@ describe("rateLimit middleware", () => {
 
     it("increments counter and sets headers on first request", async () => {
       mockIncr.mockResolvedValue(1);
-      mockPexpire.mockResolvedValue(true);
+      mockPExpire.mockResolvedValue(true);
 
       const middleware = createRateLimitMiddleware({ max: 100 });
       const req = buildReq();
@@ -109,7 +109,7 @@ describe("rateLimit middleware", () => {
       await middleware(req as any, res as any, next);
 
       expect(mockIncr).toHaveBeenCalled();
-      expect(mockPexpire).toHaveBeenCalled();
+      expect(mockPExpire).toHaveBeenCalled();
       expect(res.setHeader).toHaveBeenCalledWith("X-RateLimit-Limit", "100");
       expect(res.setHeader).toHaveBeenCalledWith("X-RateLimit-Remaining", "99");
       expect(next).toHaveBeenCalled();
@@ -126,14 +126,14 @@ describe("rateLimit middleware", () => {
       await middleware(req as any, res as any, next);
 
       expect(mockIncr).toHaveBeenCalled();
-      expect(mockPexpire).not.toHaveBeenCalled();
+      expect(mockPExpire).not.toHaveBeenCalled();
       expect(res.setHeader).toHaveBeenCalledWith("X-RateLimit-Remaining", "95");
       expect(next).toHaveBeenCalled();
     });
 
     it("returns 429 when rate limit is exceeded", async () => {
       mockIncr.mockResolvedValue(101);
-      mockPttl.mockResolvedValue(30000);
+      mockPTtl.mockResolvedValue(30000);
 
       const middleware = createRateLimitMiddleware({ max: 100 });
       const req = buildReq();
@@ -153,7 +153,7 @@ describe("rateLimit middleware", () => {
     it("sets proper headers when rate limit is exceeded with TTL", async () => {
       const mockTtl = 15000; // 15 seconds
       mockIncr.mockResolvedValue(61);
-      mockPttl.mockResolvedValue(mockTtl);
+      mockPTtl.mockResolvedValue(mockTtl);
 
       const middleware = createRateLimitMiddleware({ max: 60 });
       const req = buildReq();
@@ -177,7 +177,7 @@ describe("rateLimit middleware", () => {
 
     it("uses user id for rate limit key when authenticated", async () => {
       mockIncr.mockResolvedValue(1);
-      mockPexpire.mockResolvedValue(true);
+      mockPExpire.mockResolvedValue(true);
 
       const middleware = createRateLimitMiddleware();
       const req = buildReq({ user: { id: "user-123", username: "testuser", role: "user" } });
@@ -193,7 +193,7 @@ describe("rateLimit middleware", () => {
 
     it("uses session user id when req.user is not set", async () => {
       mockIncr.mockResolvedValue(1);
-      mockPexpire.mockResolvedValue(true);
+      mockPExpire.mockResolvedValue(true);
 
       const middleware = createRateLimitMiddleware();
       const req = buildReq({ session: { user: { id: "session-user-456", username: "sessionuser", role: "user" } } });
@@ -209,7 +209,7 @@ describe("rateLimit middleware", () => {
 
     it("uses IP address for anonymous users", async () => {
       mockIncr.mockResolvedValue(1);
-      mockPexpire.mockResolvedValue(true);
+      mockPExpire.mockResolvedValue(true);
 
       const middleware = createRateLimitMiddleware();
       const req = buildReq({ ip: "192.168.1.100" });
@@ -225,7 +225,7 @@ describe("rateLimit middleware", () => {
 
     it("uses x-forwarded-for header when available", async () => {
       mockIncr.mockResolvedValue(1);
-      mockPexpire.mockResolvedValue(true);
+      mockPExpire.mockResolvedValue(true);
 
       const middleware = createRateLimitMiddleware();
       const req = buildReq({
@@ -243,7 +243,7 @@ describe("rateLimit middleware", () => {
 
     it("includes route information in the redis key", async () => {
       mockIncr.mockResolvedValue(1);
-      mockPexpire.mockResolvedValue(true);
+      mockPExpire.mockResolvedValue(true);
 
       const middleware = createRateLimitMiddleware();
       const req = buildReq({
@@ -263,7 +263,7 @@ describe("rateLimit middleware", () => {
 
     it("uses custom keyPrefix when provided", async () => {
       mockIncr.mockResolvedValue(1);
-      mockPexpire.mockResolvedValue(true);
+      mockPExpire.mockResolvedValue(true);
 
       const middleware = createRateLimitMiddleware({ keyPrefix: "custom" });
       const req = buildReq();
@@ -296,7 +296,7 @@ describe("rateLimit middleware", () => {
 
     it("uses custom windowMs option", async () => {
       mockIncr.mockResolvedValue(1);
-      mockPexpire.mockResolvedValue(true);
+      mockPExpire.mockResolvedValue(true);
 
       const customWindowMs = 120000; // 2 minutes
       const middleware = createRateLimitMiddleware({ windowMs: customWindowMs });
@@ -306,7 +306,7 @@ describe("rateLimit middleware", () => {
 
       await middleware(req as any, res as any, next);
 
-      expect(mockPexpire).toHaveBeenCalledWith(
+      expect(mockPExpire).toHaveBeenCalledWith(
         expect.any(String),
         customWindowMs
       );
@@ -314,7 +314,7 @@ describe("rateLimit middleware", () => {
 
     it("uses custom max option", async () => {
       mockIncr.mockResolvedValue(1);
-      mockPexpire.mockResolvedValue(true);
+      mockPExpire.mockResolvedValue(true);
 
       const middleware = createRateLimitMiddleware({ max: 10 });
       const req = buildReq();
@@ -343,7 +343,7 @@ describe("rateLimit middleware", () => {
 
     it("handles unknown IP gracefully", async () => {
       mockIncr.mockResolvedValue(1);
-      mockPexpire.mockResolvedValue(true);
+      mockPExpire.mockResolvedValue(true);
 
       const middleware = createRateLimitMiddleware();
       const req = buildReq({ ip: undefined });
@@ -359,7 +359,7 @@ describe("rateLimit middleware", () => {
 
     it("does not set Retry-After header when TTL is not positive", async () => {
       mockIncr.mockResolvedValue(101);
-      mockPttl.mockResolvedValue(-1);
+      mockPTtl.mockResolvedValue(-1);
 
       const middleware = createRateLimitMiddleware({ max: 100 });
       const req = buildReq();
@@ -384,7 +384,7 @@ describe("rateLimit middleware", () => {
 
     it("uses default configuration", async () => {
       mockIncr.mockResolvedValue(1);
-      mockPexpire.mockResolvedValue(true);
+      mockPExpire.mockResolvedValue(true);
 
       const req = buildReq();
       const res = buildRes();
