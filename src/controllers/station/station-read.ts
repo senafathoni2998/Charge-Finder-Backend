@@ -206,7 +206,7 @@ const generateDemoStations = (
 
       if (!existingTypes.includes(type)) {
         const powerKW = [22, 50, 60, 100, 150][Math.floor(Math.random() * 5)];
-        const ports = Math.floor(Math.random() * 4) + 1;
+        const ports = Math.floor(Math.random() * 8) + 1;
         const availablePorts = Math.floor(Math.random() * (ports + 1));
 
         connectors.push({
@@ -221,7 +221,7 @@ const generateDemoStations = (
     const stationName =
       stationNames[Math.floor(Math.random() * stationNames.length)];
     const address = addresses[Math.floor(Math.random() * addresses.length)];
-    const status = statuses[Math.floor(Math.random() * statuses.length)];
+    const status = statuses[i % statuses.length];
 
     stations.push({
       name: `${stationName} ${i + 1}`,
