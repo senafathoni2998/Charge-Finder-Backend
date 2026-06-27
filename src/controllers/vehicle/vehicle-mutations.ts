@@ -19,7 +19,7 @@ const MAX_VEHICLES_PER_USER = 3;
  * @returns JSON response with created vehicle details
  */
 const addNewVehicle = async (
-  req: Request,
+  req: Request & { user?: { id: string } },
   res: Response,
   next: NextFunction
 ) => {
@@ -31,11 +31,17 @@ const addNewVehicle = async (
     );
   }
 
-  const { name, connector_type, min_power, userId, batteryCapacity } = req.body;
+  // Authorization: attach the vehicle to the authenticated session user only —
+  // never trust a userId from the request body (prevents IDOR).
+  const ownerId = req.user?.id ?? req.session?.user?.id;
+  if (!ownerId) {
+    return next(new HttpError("Authentication required.", 401));
+  }
+  const { name, connector_type, min_power, batteryCapacity } = req.body;
 
   let user;
   try {
-    user = await User.findById(userId);
+    user = await User.findById(ownerId);
   } catch (err) {
     return next(new HttpError("Signing up failed, please try again.", 500));
   }
@@ -106,7 +112,6 @@ const updateVehicle = async (
   next: NextFunction
 ) => {
   const errors = validationResult(req);
-  console.log("Validation Errors:", errors.array());
   if (!errors.isEmpty()) {
     return next(
       new HttpError("Invalid inputs passed, please check your data.", 422)
@@ -192,7 +197,6 @@ const setActiveVehicle = async (
   next: NextFunction
 ) => {
   const errors = validationResult(req);
-  console.log("Validation Errors:", errors.array());
   if (!errors.isEmpty()) {
     return next(
       new HttpError("Invalid inputs passed, please check your data.", 422)
@@ -285,7 +289,6 @@ const deleteVehicle = async (
   next: NextFunction
 ) => {
   const errors = validationResult(req);
-  console.log("Validation Errors:", errors.array());
   if (!errors.isEmpty()) {
     return next(
       new HttpError("Invalid inputs passed, please check your data.", 422)

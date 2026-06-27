@@ -19,5 +19,8 @@ jobs:
       - name: Install deps
         run: npm ci
 
+      - name: Typecheck
+        run: npm run typecheck
+
       - name: Run unit tests
         run: npm run test:ci

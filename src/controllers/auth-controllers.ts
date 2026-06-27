@@ -29,7 +29,6 @@ const signup = async (req: Request, res: Response, next: NextFunction) => {
   }
 
   const errors = validationResult(req);
-  console.log("Validation Errors:", errors.array());
   if (!errors.isEmpty()) {
     return next(
       new HttpError("Invalid inputs passed, please check your data.", 422),
@@ -80,7 +79,7 @@ const signup = async (req: Request, res: Response, next: NextFunction) => {
   let token;
   try {
     token = jwt.sign(
-      { userId: newUser.id, email: newUser.email, name: newUser.email },
+      { userId: newUser.id, email: newUser.email, name: newUser.name },
       process.env.SECRET_KEY,
       { expiresIn: "1d" },
     );

@@ -32,7 +32,22 @@ const stationRoutes = require("./routes/station-routes");
 const app = express();
 const server = http.createServer(app);
 
-app.use(bodyParser.json());
+app.use(bodyParser.json({ limit: "100kb" }));
+
+// Baseline security response headers (helmet-equivalent, no extra dependency).
+app.use((req: Request, res: Response, next: NextFunction) => {
+  res.setHeader("X-Content-Type-Options", "nosniff");
+  res.setHeader("X-Frame-Options", "DENY");
+  res.setHeader("Referrer-Policy", "no-referrer");
+  res.setHeader("X-DNS-Prefetch-Control", "off");
+  if (process.env.NODE_ENV === "production") {
+    res.setHeader(
+      "Strict-Transport-Security",
+      "max-age=31536000; includeSubDomains",
+    );
+  }
+  next();
+});
 
 app.use(`/${IMAGE_PUBLIC_ROOT}`, express.static(IMAGE_UPLOAD_ROOT));
 
@@ -55,10 +70,9 @@ app.use((req: Request, res: Response, next: NextFunction) => {
     .map((value) => value.trim())
     .filter(Boolean);
 
-  const isDev = process.env.NODE_ENV !== "production";
-
-  // Only set CORS headers if origin is allowed or in dev mode
-  if (origin && (isDev || allowedOrigins.includes(origin))) {
+  // Only set CORS headers when the origin is explicitly allowlisted (fail closed,
+  // regardless of NODE_ENV). Localhost dev origins are included in allowedOrigins above.
+  if (origin && allowedOrigins.includes(origin)) {
     res.setHeader("Access-Control-Allow-Origin", origin);
     res.setHeader("Access-Control-Allow-Credentials", "true");
     res.setHeader("Vary", "Origin");
@@ -77,7 +91,7 @@ app.use((req: Request, res: Response, next: NextFunction) => {
   }
 
   if (req.method === "OPTIONS") {
-    if (origin && (isDev || allowedOrigins.includes(origin))) {
+    if (origin && allowedOrigins.includes(origin)) {
       return res.sendStatus(204);
     }
     // Origin not allowed - reject preflight
@@ -87,15 +101,12 @@ app.use((req: Request, res: Response, next: NextFunction) => {
   next();
 });
 
-app.use("/api", rateLimitMiddleware);
-
-app.get("/api/debug-secure", (req, res) => {
-  res.json({
-    secure: req.secure,
-    xfproto: req.headers["x-forwarded-proto"],
-    host: req.headers.host,
-  });
+// Lightweight liveness probe (no auth, no DB) for load balancers / container healthchecks.
+app.get("/health", (_req: Request, res: Response) => {
+  res.status(200).json({ status: "ok" });
 });
+
+app.use("/api", rateLimitMiddleware);
 
 app.use("/api/auth", authRoutes);
 
@@ -123,14 +134,21 @@ app.use((error: any, req: Request, res: Response, next: NextFunction) => {
   if (res.headersSent) {
     return next(error);
   }
-  console.log("ERROR CODE", error);
-  res.status(error.code || 500);
+  // error.code may be a non-numeric string (e.g. Multer's "LIMIT_FILE_SIZE"),
+  // which is not a valid HTTP status — fall back to 500 in that case.
+  const status =
+    typeof error.code === "number" && error.code >= 400 && error.code <= 599
+      ? error.code
+      : typeof error.statusCode === "number"
+      ? error.statusCode
+      : 500;
+  res.status(status);
   res.json({ message: error.message || "An unknown error occurred!" });
 });
 
 mongoose
   .connect(
-    `mongodb+srv://${process.env.DB_USER}:${process.env.DB_PASSWORD}@${process.env.DB_HOST}/?appName=${process.env.DB_NAME}`,
+    `mongodb+srv://${process.env.DB_USER}:${process.env.DB_PASSWORD}@${process.env.DB_HOST}/${process.env.DB_NAME}?retryWrites=true&w=majority&appName=ChargeFinder`,
   )
   .then(() => {
     connectRedis().then(async () => {
