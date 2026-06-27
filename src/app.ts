@@ -21,7 +21,7 @@ import { ensureAdminUser } from "./startup/ensure-admin";
 import { ensureStationsSeeded } from "./startup/ensure-stations";
 import { ensureDemoData } from "./startup/ensure-demo-data";
 import { ensureVehicleBatteryDefaults } from "./services/vehicle-battery-service";
-import HttpError from "./models/http-error";
+import { notFoundHandler, errorHandler } from "./middleware/error-handler";
 import { IMAGE_PUBLIC_ROOT, IMAGE_UPLOAD_ROOT } from "./utils/image-paths";
 import { buildMongoUri } from "./utils/mongo-uri";
 import { config } from "./config";
@@ -126,26 +126,9 @@ app.use("/api/vehicles", vehicleRoutes);
 
 app.use("/api/stations", stationRoutes);
 
-app.use((req: Request, res: Response, next: NextFunction) => {
-  const error = new HttpError("Could not find this route.", 404);
-  throw error;
-});
+app.use(notFoundHandler);
 
-app.use((error: any, req: Request, res: Response, next: NextFunction) => {
-  if (res.headersSent) {
-    return next(error);
-  }
-  // error.code may be a non-numeric string (e.g. Multer's "LIMIT_FILE_SIZE"),
-  // which is not a valid HTTP status — fall back to 500 in that case.
-  const status =
-    typeof error.code === "number" && error.code >= 400 && error.code <= 599
-      ? error.code
-      : typeof error.statusCode === "number"
-      ? error.statusCode
-      : 500;
-  res.status(status);
-  res.json({ message: error.message || "An unknown error occurred!" });
-});
+app.use(errorHandler);
 
 mongoose
   .connect(buildMongoUri())

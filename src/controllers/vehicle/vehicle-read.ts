@@ -1,115 +1,75 @@
-import { Request, Response, NextFunction } from "express";
 import { validationResult } from "express-validator";
 
-import HttpError from "../../models/http-error";
 import Vehicle from "../../models/vehicle";
 import User from "../../models/user";
 import {
   refreshVehicleBatterySnapshot,
   refreshVehicleBatterySnapshots,
 } from "../../services/vehicle-battery-service";
+import { asyncHandler } from "../../middleware/async-handler";
+import {
+  ForbiddenError,
+  NotFoundError,
+  UnauthorizedError,
+  ValidationError,
+} from "../../errors";
 
 /**
- * Retrieves all vehicles owned by the authenticated user
- * 
- * @purpose Endpoint for users to view their registered vehicles
- * @authentication Requires active session with user ID
- * @batteryRefresh Refreshes battery percentage data before returning vehicles
- * @returns JSON response with array of user's vehicles with current battery status
+ * Retrieves all vehicles owned by the authenticated user.
+ *
+ * DB errors are not caught here — they propagate to the central error middleware
+ * (via asyncHandler) and become a 500. Only expected outcomes throw semantic errors.
  */
-const getVehicles = async (
-  req: Request & { user?: { id: string } },
-  res: Response,
-  next: NextFunction
-) => {
+const getVehicles = asyncHandler(async (req, res) => {
   if (!req.user) {
-    return next(new HttpError("Authentication required.", 401));
+    throw new UnauthorizedError("Authentication required.");
   }
 
-  const userId = req.user.id;
-
-  let userWithVehicles;
-  try {
-    userWithVehicles = await User.findById(userId).populate("vehicles");
-  } catch (err) {
-    return next(
-      new HttpError("Fetching vehicles failed, please try again later.", 500)
-    );
-  }
+  const userWithVehicles = await User.findById(req.user.id).populate("vehicles");
 
   if (!userWithVehicles || userWithVehicles.vehicles.length === 0) {
-    return next(
-      new HttpError("Could not find vehicles for the provided user id.", 404)
-    );
+    throw new NotFoundError("Could not find vehicles for the provided user id.");
   }
 
-  // Convert to plain objects for manipulation
   const vehicleSnapshots = userWithVehicles.vehicles.map((vehicle: any) =>
     vehicle.toObject({ getters: true })
   );
 
-  // Refresh battery percentage data from active charging sessions
   const refreshedVehicles = await refreshVehicleBatterySnapshots(
     vehicleSnapshots
   );
 
-  res.json({
-    vehicles: refreshedVehicles,
-  });
-};
+  res.json({ vehicles: refreshedVehicles });
+});
 
 /**
- * Retrieves a specific vehicle by ID
- * 
- * @purpose Endpoint to fetch detailed information about a single vehicle
- * @authentication Requires active session with user ID
- * @authorization Verifies user owns the requested vehicle
- * @batteryRefresh Refreshes battery percentage data before returning vehicle
- * @params vehicleId - Vehicle ID from URL params
- * @returns JSON response with vehicle details and current battery status
+ * Retrieves a specific vehicle by ID (owner-only).
  */
-const getVehicleById = async (
-  req: Request & { user?: { id: string } },
-  res: Response,
-  next: NextFunction
-) => {
+const getVehicleById = asyncHandler(async (req, res) => {
   const errors = validationResult(req);
   if (!errors.isEmpty()) {
-    return next(
-      new HttpError("Invalid inputs passed, please check your data.", 422)
-    );
+    throw new ValidationError();
   }
 
   if (!req.user) {
-    return next(new HttpError("Authentication required.", 401));
+    throw new UnauthorizedError("Authentication required.");
   }
 
   const { vehicleId } = req.params;
-
-  let vehicle;
-  try {
-    vehicle = await Vehicle.findById(vehicleId);
-  } catch (err) {
-    return next(
-      new HttpError("Fetching vehicle failed, please try again later.", 500)
-    );
-  }
+  const vehicle = await Vehicle.findById(vehicleId);
 
   if (!vehicle) {
-    return next(new HttpError("Vehicle not found.", 404));
+    throw new NotFoundError("Vehicle not found.");
   }
 
   if (vehicle.owner.toString() !== req.user.id) {
-    return next(new HttpError("Not authorized to view this vehicle.", 403));
+    throw new ForbiddenError("Not authorized to view this vehicle.");
   }
 
-  // Get vehicle data and refresh battery percentage from active charging session
   const vehicleSnapshot = vehicle.toObject({ getters: true });
   const refreshedVehicle = await refreshVehicleBatterySnapshot(vehicleSnapshot);
 
-  res.status(200).json({
-    vehicle: refreshedVehicle ?? vehicleSnapshot,
-  });
-};
+  res.status(200).json({ vehicle: refreshedVehicle ?? vehicleSnapshot });
+});
 
 export { getVehicles, getVehicleById };

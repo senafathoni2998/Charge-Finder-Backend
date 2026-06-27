@@ -81,20 +81,19 @@ describe("vehicle-read controllers", () => {
         expect(error.code).toBe(401);
     });
 
-    it("returns 500 if user fetching fails", async () => {
+    it("forwards DB errors to the error middleware", async () => {
         const req = { user: { id: "user-1" } };
         const res = buildRes();
         const next = jest.fn();
 
+        const dbError = new Error("Database error");
         UserMock.findById.mockReturnValue({
-            populate: jest.fn().mockRejectedValue(new Error("Database error"))
+            populate: jest.fn().mockRejectedValue(dbError)
         });
 
         await getVehicles(req as any, res as any, next);
 
-        expect(next).toHaveBeenCalledWith(expect.any(HttpError));
-        const error = next.mock.calls[0][0] as HttpError;
-        expect(error.code).toBe(500);
+        expect(next).toHaveBeenCalledWith(dbError);
     });
 
     it("returns 404 if no vehicles found for the user", async () => {
@@ -161,17 +160,17 @@ describe("vehicle-read controllers", () => {
           expect(next.mock.calls[0][0].code).toBe(401);
       });
 
-      it("returns 500 if vehicle fetch fails", async () => {
+      it("forwards DB errors to the error middleware", async () => {
         const req = { params: { vehicleId: "v1" }, user: { id: "u1" } };
         const res = buildRes();
         const next = jest.fn();
 
-        VehicleMock.findById.mockRejectedValue(new Error("DB Error"));
+        const dbError = new Error("DB Error");
+        VehicleMock.findById.mockRejectedValue(dbError);
 
         await getVehicleById(req as any, res as any, next);
 
-        expect(next).toHaveBeenCalledWith(expect.any(HttpError));
-        expect(next.mock.calls[0][0].code).toBe(500);
+        expect(next).toHaveBeenCalledWith(dbError);
       });
 
       it("returns 404 if vehicle not found", async () => {
