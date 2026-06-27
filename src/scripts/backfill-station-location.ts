@@ -3,6 +3,7 @@ dotenv.config();
 
 import mongoose from "mongoose";
 import Station from "../models/station";
+import { buildMongoUri } from "../utils/mongo-uri";
 
 /**
  * One-off migration: populate the GeoJSON `location` field on existing stations
@@ -10,19 +11,6 @@ import Station from "../models/station";
  *
  * Run with: npm run backfill:station-location
  */
-const buildMongoUri = () => {
-  if (process.env.MONGODB_URI) {
-    return process.env.MONGODB_URI;
-  }
-
-  const { DB_USER, DB_PASSWORD, DB_HOST, DB_NAME } = process.env;
-  if (!DB_USER || !DB_PASSWORD || !DB_HOST || !DB_NAME) {
-    throw new Error("Missing database credentials.");
-  }
-
-  return `mongodb+srv://${DB_USER}:${DB_PASSWORD}@${DB_HOST}/${DB_NAME}?retryWrites=true&w=majority&appName=ChargeFinder`;
-};
-
 const run = async () => {
   await mongoose.connect(buildMongoUri());
 

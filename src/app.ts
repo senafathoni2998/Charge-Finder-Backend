@@ -23,6 +23,7 @@ import { ensureDemoData } from "./startup/ensure-demo-data";
 import { ensureVehicleBatteryDefaults } from "./services/vehicle-battery-service";
 import HttpError from "./models/http-error";
 import { IMAGE_PUBLIC_ROOT, IMAGE_UPLOAD_ROOT } from "./utils/image-paths";
+import { buildMongoUri } from "./utils/mongo-uri";
 const authRoutes = require("./routes/auth-routes");
 const adminRoutes = require("./routes/admin-routes");
 const profileRoutes = require("./routes/profile-routes");
@@ -147,9 +148,7 @@ app.use((error: any, req: Request, res: Response, next: NextFunction) => {
 });
 
 mongoose
-  .connect(
-    `mongodb+srv://${process.env.DB_USER}:${process.env.DB_PASSWORD}@${process.env.DB_HOST}/${process.env.DB_NAME}?retryWrites=true&w=majority&appName=ChargeFinder`,
-  )
+  .connect(buildMongoUri())
   .then(() => {
     connectRedis().then(async () => {
       console.log("✅ Connected to MongoDB");

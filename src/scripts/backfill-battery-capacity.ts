@@ -7,6 +7,7 @@ import {
   backfillVehicleBatteryCapacity,
   parseBatteryCapacityDefault,
 } from "../services/vehicle-battery-service";
+import { buildMongoUri } from "../utils/mongo-uri";
 
 const rawDefault = process.env.BATTERY_CAPACITY_DEFAULT ?? process.argv[2];
 const defaultCapacity = parseBatteryCapacityDefault(rawDefault);
@@ -17,19 +18,6 @@ if (defaultCapacity === undefined) {
   );
   process.exit(1);
 }
-
-const buildMongoUri = () => {
-  if (process.env.MONGODB_URI) {
-    return process.env.MONGODB_URI;
-  }
-
-  const { DB_USER, DB_PASSWORD, DB_HOST, DB_NAME } = process.env;
-  if (!DB_USER || !DB_PASSWORD || !DB_HOST || !DB_NAME) {
-    throw new Error("Missing database credentials.");
-  }
-
-  return `mongodb+srv://${DB_USER}:${DB_PASSWORD}@${DB_HOST}/?appName=${DB_NAME}`;
-};
 
 const run = async () => {
   const uri = buildMongoUri();
