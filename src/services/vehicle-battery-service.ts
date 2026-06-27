@@ -1,4 +1,5 @@
 import Vehicle from "../models/vehicle";
+import { config } from "../config";
 
 export type BatteryStatus = "FULL" | "HIGH" | "MEDIUM" | "LOW" | "CRITICAL";
 
@@ -116,7 +117,7 @@ export const ensureVehicleBatteryDefaults = async () => {
   );
 
   const capacityDefault = parseBatteryCapacityDefault(
-    process.env.BATTERY_CAPACITY_DEFAULT
+    config.batteryCapacityDefault
   );
   if (capacityDefault !== undefined) {
     await backfillVehicleBatteryCapacity(capacityDefault);

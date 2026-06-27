@@ -24,6 +24,7 @@ import { ensureVehicleBatteryDefaults } from "./services/vehicle-battery-service
 import HttpError from "./models/http-error";
 import { IMAGE_PUBLIC_ROOT, IMAGE_UPLOAD_ROOT } from "./utils/image-paths";
 import { buildMongoUri } from "./utils/mongo-uri";
+import { config } from "./config";
 const authRoutes = require("./routes/auth-routes");
 const adminRoutes = require("./routes/admin-routes");
 const profileRoutes = require("./routes/profile-routes");
@@ -41,7 +42,7 @@ app.use((req: Request, res: Response, next: NextFunction) => {
   res.setHeader("X-Frame-Options", "DENY");
   res.setHeader("Referrer-Policy", "no-referrer");
   res.setHeader("X-DNS-Prefetch-Control", "off");
-  if (process.env.NODE_ENV === "production") {
+  if (config.isProduction) {
     res.setHeader(
       "Strict-Transport-Security",
       "max-age=31536000; includeSubDomains",
@@ -61,8 +62,7 @@ initChargingProgressWebSocketServer(server, sessionMiddleware);
 app.use((req: Request, res: Response, next: NextFunction) => {
   const origin = req.headers.origin;
   const allowedOrigins = [
-    ...(process.env.CORS_ORIGINS?.split(",") ?? []),
-    process.env.CORS_ORIGIN ?? "",
+    ...config.corsOrigins,
     "http://localhost:3000",
     "http://localhost:5173",
     "http://127.0.0.1:3000",
@@ -160,8 +160,8 @@ mongoose
       } catch (err) {
         console.error("Failed to init vehicle batteries:", err);
       }
-      server.listen(5000, () => {
-        console.log("Server is running on port 5000");
+      server.listen(config.port, () => {
+        console.log(`Server is running on port ${config.port}`);
       });
     });
   })

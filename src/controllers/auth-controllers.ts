@@ -3,6 +3,7 @@ import HttpError from "../models/http-error";
 
 import User from "../models/user";
 import { getPublicImagePathFromFile } from "../utils/image-paths";
+import { config } from "../config";
 
 const jwt = require("jsonwebtoken");
 const bcrypt = require("bcryptjs");
@@ -22,7 +23,7 @@ const { validationResult } = require("express-validator");
  */
 const signup = async (req: Request, res: Response, next: NextFunction) => {
   // Check if signup is disabled via environment variable
-  if (process.env.DISABLE_SIGNUP === "true") {
+  if (config.disableSignup) {
     return next(
       new HttpError("Service unavailable. User registration is currently disabled.", 503),
     );
@@ -80,7 +81,7 @@ const signup = async (req: Request, res: Response, next: NextFunction) => {
   try {
     token = jwt.sign(
       { userId: newUser.id, email: newUser.email, name: newUser.name },
-      process.env.SECRET_KEY,
+      config.jwtSecret,
       { expiresIn: "1d" },
     );
   } catch (err) {
@@ -252,7 +253,7 @@ const login = async (req: Request, res: Response, next: NextFunction) => {
         email: identifiedUser.email,
         name: identifiedUser.name,
       },
-      process.env.SECRET_KEY,
+      config.jwtSecret,
       { expiresIn: "1d" },
     );
   } catch (err) {

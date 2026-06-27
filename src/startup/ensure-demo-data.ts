@@ -5,6 +5,7 @@ import Vehicle from "../models/vehicle";
 import ChargingHistory from "../models/charging-history";
 import { DEMO_USER, DEMO_VEHICLES, DEMO_CHARGING_HISTORY } from "./data/demo-data";
 import StationModel from "../models/station";
+import { config } from "../config";
 
 /**
  * Ensures demo data exists for users to try the app
@@ -12,7 +13,7 @@ import StationModel from "../models/station";
  */
 export async function ensureDemoData() {
   // Check if demo data is enabled
-  if (process.env.ENABLE_DEMO_DATA !== "true") {
+  if (!config.enableDemoData) {
     return;
   }
 

@@ -1,5 +1,7 @@
+import { config } from "../config";
+
 /**
- * Builds the MongoDB connection URI from environment variables.
+ * Builds the MongoDB connection URI from validated config.
  *
  * - Honors an explicit MONGODB_URI override if present.
  * - URL-encodes the username and password so credentials containing special
@@ -8,18 +10,18 @@
  * - Throws (fail-fast) if required config is missing.
  */
 export const buildMongoUri = (): string => {
-  if (process.env.MONGODB_URI) {
-    return process.env.MONGODB_URI;
+  if (config.db.uri) {
+    return config.db.uri;
   }
 
-  const { DB_USER, DB_PASSWORD, DB_HOST, DB_NAME } = process.env;
-  if (!DB_USER || !DB_PASSWORD || !DB_HOST || !DB_NAME) {
+  const { user, password, host, name } = config.db;
+  if (!user || !password || !host || !name) {
     throw new Error(
       "Missing database configuration. Set DB_USER, DB_PASSWORD, DB_HOST and DB_NAME (or MONGODB_URI).",
     );
   }
 
-  const user = encodeURIComponent(DB_USER);
-  const pass = encodeURIComponent(DB_PASSWORD);
-  return `mongodb+srv://${user}:${pass}@${DB_HOST}/${DB_NAME}?retryWrites=true&w=majority&appName=ChargeFinder`;
+  return `mongodb+srv://${encodeURIComponent(user)}:${encodeURIComponent(
+    password,
+  )}@${host}/${name}?retryWrites=true&w=majority&appName=ChargeFinder`;
 };

@@ -29,7 +29,8 @@
     "multer": "^2.0.2",
     "redis": "^5.10.0",
     "uuid": "^13.0.0",
-    "ws": "^8.19.0"
+    "ws": "^8.19.0",
+    "zod": "^4.4.3"
   },
   "devDependencies": {
     "@types/connect-redis": "^0.0.23",

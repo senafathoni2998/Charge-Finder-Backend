@@ -8,8 +8,9 @@ import {
   parseBatteryCapacityDefault,
 } from "../services/vehicle-battery-service";
 import { buildMongoUri } from "../utils/mongo-uri";
+import { config } from "../config";
 
-const rawDefault = process.env.BATTERY_CAPACITY_DEFAULT ?? process.argv[2];
+const rawDefault = config.batteryCapacityDefault ?? process.argv[2];
 const defaultCapacity = parseBatteryCapacityDefault(rawDefault);
 
 if (defaultCapacity === undefined) {

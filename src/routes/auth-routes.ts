@@ -1,5 +1,6 @@
 import { fileUpload } from "../middleware/fileUpload";
 import { createRateLimitMiddleware } from "../middleware/rateLimit";
+import { config } from "../config";
 
 const express = require("express");
 const { check } = require("express-validator");
@@ -9,14 +10,9 @@ const router = express.Router();
 
 const authControllers = require("../controllers/auth-controllers");
 
-const parsePositiveInt = (value: string | undefined, fallback: number) => {
-  const parsed = Number.parseInt(value ?? "", 10);
-  return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
-};
-
 const signupRateLimit = createRateLimitMiddleware({
-  windowMs: parsePositiveInt(process.env.SIGNUP_RATE_LIMIT_WINDOW_MS, 60 * 60 * 1000),
-  max: parsePositiveInt(process.env.SIGNUP_RATE_LIMIT_MAX, 5),
+  windowMs: config.rateLimit.signupWindowMs,
+  max: config.rateLimit.signupMax,
   keyPrefix: "signup",
 });
 
