@@ -15,32 +15,46 @@ const run = async () => {
   await mongoose.connect(buildMongoUri());
 
   try {
-    // Aggregation-pipeline update: set location = Point([lng, lat]) for every
-    // station that has numeric lat/lng but no GeoJSON location yet.
-    const filter: Record<string, unknown> = {
-      lat: { $type: "number" },
-      lng: { $type: "number" },
-      $or: [
-        { location: { $exists: false } },
-        { "location.coordinates": { $exists: false } },
-        { "location.coordinates": { $size: 0 } },
-      ],
-    };
-    const pipeline: mongoose.PipelineStage[] = [
-      {
-        $set: {
-          location: {
-            type: "Point",
-            coordinates: ["$lng", "$lat"],
+    // Load stations that have numeric lat/lng, then set location = Point([lng, lat])
+    // for any missing a valid GeoJSON point. Coordinates are computed in JS and
+    // written with a plain $set via bulkWrite (no aggregation-pipeline update).
+    const stations = (await Station.find(
+      { lat: { $type: "number" }, lng: { $type: "number" } } as any,
+      { _id: 1, lat: 1, lng: 1, location: 1 },
+    ).lean()) as Array<{
+      _id: unknown;
+      lat: number;
+      lng: number;
+      location?: { coordinates?: number[] };
+    }>;
+
+    const ops = stations
+      .filter((s) => {
+        const coords = s.location?.coordinates;
+        return !(Array.isArray(coords) && coords.length === 2);
+      })
+      .map((s) => ({
+        updateOne: {
+          filter: { _id: s._id },
+          update: {
+            $set: {
+              location: { type: "Point", coordinates: [s.lng, s.lat] },
+            },
           },
         },
-      },
-    ];
-    const result = await Station.updateMany(filter, pipeline);
+      }));
 
-    const modified =
-      typeof result.modifiedCount === "number" ? result.modifiedCount : 0;
-    console.log(`Backfilled location for ${modified} station(s).`);
+    let modified = 0;
+    if (ops.length > 0) {
+      const result = await Station.bulkWrite(ops as any);
+      modified =
+        typeof result.modifiedCount === "number"
+          ? result.modifiedCount
+          : ops.length;
+    }
+    console.log(
+      `Backfilled location for ${modified} of ${stations.length} station(s).`,
+    );
 
     // Make sure the 2dsphere index actually exists in the database.
     await Station.syncIndexes();
