@@ -3,6 +3,7 @@ import { validationResult } from "express-validator";
 
 import HttpError from "../../models/http-error";
 import Station, { toGeoPoint } from "../../models/station";
+import { invalidateStation } from "../../services/station-cache";
 
 /**
  * Creates a new charging station
@@ -169,6 +170,8 @@ const updateStation = async (
     );
   }
 
+  await invalidateStation(stationId);
+
   res.status(200).json({
     message: "Station updated successfully!",
     station: station.toObject({ getters: true }),
@@ -218,6 +221,8 @@ const deleteStation = async (
       new HttpError("Deleting station failed, please try again.", 500)
     );
   }
+
+  await invalidateStation(stationId);
 
   res.status(200).json({ message: "Station deleted successfully!" });
 };

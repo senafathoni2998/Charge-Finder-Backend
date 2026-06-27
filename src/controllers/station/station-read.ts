@@ -5,6 +5,12 @@ import mongoose from "mongoose";
 import HttpError from "../../models/http-error";
 import Station from "../../models/station";
 import ChargingTicket from "../../models/charging-ticket";
+import {
+  getCachedJson,
+  setCachedJson,
+  stationByIdKey,
+  stationGeoKey,
+} from "../../services/station-cache";
 
 /**
  * Normalizes query parameter values (handles arrays)
@@ -178,33 +184,48 @@ const getStations = async (
     // read and sorted by distance in the database — never the whole collection.
     const maxResults =
       limit !== null ? Math.floor(limit) : DEFAULT_NEARBY_LIMIT;
-    try {
-      const geoPipeline: mongoose.PipelineStage[] = [
-        {
-          $geoNear: {
-            near: {
-              type: "Point",
-              coordinates: [userLng as number, userLat as number],
+    // The cached value is the raw geo result (no per-user data). The user-specific
+    // isChargingHere flag is applied by shapeAggregatedStation after the cache read.
+    const cacheKey = stationGeoKey(
+      userLat as number,
+      userLng as number,
+      radiusKm,
+      maxResults,
+    );
+    let nearbyDocs = await getCachedJson<Record<string, unknown>[]>(cacheKey);
+    if (!nearbyDocs) {
+      try {
+        const geoPipeline: mongoose.PipelineStage[] = [
+          {
+            $geoNear: {
+              near: {
+                type: "Point",
+                coordinates: [userLng as number, userLat as number],
+              },
+              distanceField: "distanceMeters",
+              spherical: true,
+              ...(radiusKm !== null ? { maxDistance: radiusKm * 1000 } : {}),
             },
-            distanceField: "distanceMeters",
-            spherical: true,
-            ...(radiusKm !== null ? { maxDistance: radiusKm * 1000 } : {}),
           },
-        },
-        { $limit: maxResults },
-      ];
-      const nearbyDocs = (await Station.aggregate(geoPipeline)) as Record<
-        string,
-        unknown
-      >[];
-      stationsPayload = nearbyDocs.map((doc) =>
-        shapeAggregatedStation(doc, chargingStationIds),
-      );
-    } catch (err) {
-      return next(
-        new HttpError("Fetching stations failed, please try again later.", 500),
-      );
+          { $limit: maxResults },
+        ];
+        nearbyDocs = (await Station.aggregate(geoPipeline)) as Record<
+          string,
+          unknown
+        >[];
+        await setCachedJson(cacheKey, nearbyDocs);
+      } catch (err) {
+        return next(
+          new HttpError(
+            "Fetching stations failed, please try again later.",
+            500,
+          ),
+        );
+      }
     }
+    stationsPayload = nearbyDocs.map((doc) =>
+      shapeAggregatedStation(doc, chargingStationIds),
+    );
 
     // Always include stations where the user is actively charging, even if they
     // fall outside the search radius/limit.
@@ -291,17 +312,29 @@ const getStationById = async (
     return next(new HttpError("Invalid station id.", 422));
   }
 
-  let station;
-  try {
-    station = await Station.findById(stationId);
-  } catch (err) {
-    return next(
-      new HttpError("Fetching station failed, please try again later.", 500),
-    );
-  }
+  // Station data (without the per-user isChargingHere flag) is cached by id.
+  let stationData = await getCachedJson<Record<string, unknown>>(
+    stationByIdKey(stationId),
+  );
+  if (!stationData) {
+    let station;
+    try {
+      station = await Station.findById(stationId);
+    } catch (err) {
+      return next(
+        new HttpError("Fetching station failed, please try again later.", 500),
+      );
+    }
 
-  if (!station) {
-    return next(new HttpError("Station not found.", 404));
+    if (!station) {
+      return next(new HttpError("Station not found.", 404));
+    }
+
+    stationData = station.toObject({ getters: true }) as Record<
+      string,
+      unknown
+    >;
+    await setCachedJson(stationByIdKey(stationId), stationData);
   }
 
   // Check if user is currently charging at this station
@@ -331,7 +364,7 @@ const getStationById = async (
 
   res.status(200).json({
     station: {
-      ...station.toObject({ getters: true }),
+      ...stationData,
       isChargingHere,
     },
   });
