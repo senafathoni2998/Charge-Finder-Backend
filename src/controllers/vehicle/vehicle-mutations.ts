@@ -5,6 +5,7 @@ import mongoose from "mongoose";
 import HttpError from "../../models/http-error";
 import Vehicle from "../../models/vehicle";
 import User from "../../models/user";
+import { logger } from "../../logger";
 
 const MAX_VEHICLES_PER_USER = 3;
 
@@ -88,7 +89,7 @@ const addNewVehicle = async (
     await user.save({ session: sess });
     await sess.commitTransaction();
   } catch (err) {
-    console.error(err);
+    logger.error({ err }, "Failed to create vehicle");
     return next(new HttpError("Creating place failed, please try again.", 500));
   }
 

@@ -2,6 +2,7 @@ import type { Request, Response, NextFunction } from "express";
 
 import HttpError from "../models/http-error";
 import { NotFoundError } from "../errors";
+import { logger } from "../logger";
 
 const isHttpStatus = (value: unknown): value is number =>
   typeof value === "number" && value >= 400 && value <= 599;
@@ -63,7 +64,7 @@ export const errorHandler = (
   }
 
   if (status >= 500) {
-    console.error("Unhandled error:", error);
+    logger.error({ err: error }, "Unhandled error");
   }
 
   res.status(status).json({ message });

@@ -2,6 +2,11 @@ export {};
 
 import { ensureStationsSeeded } from "../ensure-stations";
 
+jest.mock("../../logger", () => ({
+  logger: { info: jest.fn(), warn: jest.fn(), error: jest.fn(), debug: jest.fn() },
+}));
+const { logger } = require("../../logger");
+
 // Mock Station model
 jest.mock("../../models/station", () => {
   return {
@@ -78,7 +83,7 @@ describe("startup/ensure-stations", () => {
     expect(insertedArgs).toHaveLength(2);
     expect(insertedArgs[0]).not.toHaveProperty("id"); // Checks if id property is removed as per implementation
 
-    expect(consoleSpy).toHaveBeenCalledWith("Seeded 2 stations");
+    expect(logger.info).toHaveBeenCalledWith("Seeded 2 stations");
 
     consoleSpy.mockRestore();
   });
@@ -98,7 +103,7 @@ describe("startup/ensure-stations", () => {
     await ensureStationsSeeded();
 
     expect(StationModel.insertMany).not.toHaveBeenCalled();
-    expect(consoleSpy).toHaveBeenCalledWith("Stations already seeded");
+    expect(logger.info).toHaveBeenCalledWith("Stations already seeded");
 
     consoleSpy.mockRestore();
   });
@@ -113,7 +118,7 @@ describe("startup/ensure-stations", () => {
 
     await ensureStationsSeeded();
 
-    expect(consoleSpy).toHaveBeenCalledWith("Failed to seed stations:", error);
+    expect(logger.error).toHaveBeenCalledWith({ err: error }, "Failed to seed stations");
 
     consoleSpy.mockRestore();
   });
@@ -130,7 +135,7 @@ describe("startup/ensure-stations", () => {
 
     await ensureStationsSeeded();
 
-    expect(consoleSpy).toHaveBeenCalledWith("Failed to seed stations:", error);
+    expect(logger.error).toHaveBeenCalledWith({ err: error }, "Failed to seed stations");
 
     consoleSpy.mockRestore();
   });

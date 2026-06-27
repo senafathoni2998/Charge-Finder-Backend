@@ -1,6 +1,7 @@
 import { createClient } from "redis";
 
 import { config } from "../config";
+import { logger } from "../logger";
 
 const redisClient = createClient({
   url: config.redis.url,
@@ -8,13 +9,13 @@ const redisClient = createClient({
 });
 
 redisClient.on("error", (err) => {
-  console.error("Redis error", err);
+  logger.error({ err }, "Redis error");
 });
 
 export async function connectRedis() {
   if (!redisClient.isOpen) {
     await redisClient.connect();
-    console.log("✅ Redis connected");
+    logger.info("Redis connected");
   }
 }
 

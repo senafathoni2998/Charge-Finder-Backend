@@ -6,6 +6,7 @@ import ChargingHistory from "../models/charging-history";
 import { DEMO_USER, DEMO_VEHICLES, DEMO_CHARGING_HISTORY } from "./data/demo-data";
 import StationModel from "../models/station";
 import { config } from "../config";
+import { logger } from "../logger";
 
 /**
  * Ensures demo data exists for users to try the app
@@ -22,7 +23,7 @@ export async function ensureDemoData() {
     const existingUser = await User.findOne({ email: DEMO_USER.email }).lean();
 
     if (existingUser) {
-      console.log(`Demo user already exists (${DEMO_USER.email})`);
+      logger.info(`Demo user already exists (${DEMO_USER.email})`);
       return;
     }
 
@@ -40,7 +41,7 @@ export async function ensureDemoData() {
     });
 
     await demoUser.save();
-    console.log(`Demo user created (${DEMO_USER.email})`);
+    logger.info(`Demo user created (${DEMO_USER.email})`);
 
     // Create demo vehicles
     const createdVehicles = [];
@@ -53,7 +54,7 @@ export async function ensureDemoData() {
       await vehicle.save();
       createdVehicles.push(vehicle);
     }
-    console.log(`Created ${createdVehicles.length} demo vehicles`);
+    logger.info(`Created ${createdVehicles.length} demo vehicles`);
 
     // Update user with vehicles
     demoUser.vehicles = createdVehicles.map((v) => v._id);
@@ -82,10 +83,10 @@ export async function ensureDemoData() {
       await history.save();
       historyEntries.push(history);
     }
-    console.log(`Created ${historyEntries.length} demo charging history entries`);
+    logger.info(`Created ${historyEntries.length} demo charging history entries`);
 
-    console.log("Demo data seeding completed successfully!");
+    logger.info("Demo data seeding completed successfully!");
   } catch (err) {
-    console.error("Failed to seed demo data:", err);
+    logger.error({ err }, "Failed to seed demo data");
   }
 }

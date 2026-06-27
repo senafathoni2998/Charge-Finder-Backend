@@ -2,6 +2,7 @@ import type { Request, Response, NextFunction } from "express";
 
 import redisClient from "../session/redis";
 import { config } from "../config";
+import { logger } from "../logger";
 
 const RATE_LIMIT_WINDOW_MS = config.rateLimit.windowMs;
 const RATE_LIMIT_MAX = config.rateLimit.max;
@@ -87,7 +88,7 @@ export const createRateLimitMiddleware = (options: RateLimitOptions = {}) => {
           .json({ message: "Too many requests, please slow down." });
       }
     } catch (error) {
-      console.warn("Rate limiter skipped due to error:", error);
+      logger.warn({ err: error }, "Rate limiter skipped due to error");
     }
 
     return next();

@@ -25,6 +25,7 @@ import { notFoundHandler, errorHandler } from "./middleware/error-handler";
 import { IMAGE_PUBLIC_ROOT, IMAGE_UPLOAD_ROOT } from "./utils/image-paths";
 import { buildMongoUri } from "./utils/mongo-uri";
 import { config } from "./config";
+import { logger } from "./logger";
 const authRoutes = require("./routes/auth-routes");
 const adminRoutes = require("./routes/admin-routes");
 const profileRoutes = require("./routes/profile-routes");
@@ -134,20 +135,20 @@ mongoose
   .connect(buildMongoUri())
   .then(() => {
     connectRedis().then(async () => {
-      console.log("✅ Connected to MongoDB");
+      logger.info("Connected to MongoDB");
       await ensureAdminUser();
       await ensureStationsSeeded();
       await ensureDemoData();
       try {
         await ensureVehicleBatteryDefaults();
       } catch (err) {
-        console.error("Failed to init vehicle batteries:", err);
+        logger.error({ err }, "Failed to init vehicle batteries");
       }
       server.listen(config.port, () => {
-        console.log(`Server is running on port ${config.port}`);
+        logger.info(`Server is running on port ${config.port}`);
       });
     });
   })
   .catch((err: Error) => {
-    console.error("Database connection failed:", err);
+    logger.error({ err }, "Database connection failed");
   });

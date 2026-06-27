@@ -1,5 +1,6 @@
 import bcrypt from "bcryptjs";
 import User from "../models/user";
+import { logger } from "../logger";
 
 type AdminSeedConfig = {
   email: string;
@@ -31,13 +32,13 @@ export async function ensureAdminUser() {
       .lean();
 
     if (existingAdmin) {
-      console.log(`Admin user exists (${existingAdmin.email})`);
+      logger.info(`Admin user exists (${existingAdmin.email})`);
       return;
     }
 
     const seedConfig = getAdminSeedConfig();
     if (!seedConfig) {
-      console.warn(
+      logger.warn(
         "No admin user found and ADMIN_EMAIL/ADMIN_PASSWORD not set. Skipping admin creation."
       );
       return;
@@ -47,7 +48,7 @@ export async function ensureAdminUser() {
     if (existingUser) {
       existingUser.role = "admin";
       await existingUser.save();
-      console.log(`Promoted user to admin (${seedConfig.email})`);
+      logger.info(`Promoted user to admin (${seedConfig.email})`);
       return;
     }
 
@@ -61,8 +62,8 @@ export async function ensureAdminUser() {
     });
 
     await adminUser.save();
-    console.log(`Admin user created (${seedConfig.email})`);
+    logger.info(`Admin user created (${seedConfig.email})`);
   } catch (err) {
-    console.error("Failed to ensure admin user:", err);
+    logger.error({ err }, "Failed to ensure admin user");
   }
 }

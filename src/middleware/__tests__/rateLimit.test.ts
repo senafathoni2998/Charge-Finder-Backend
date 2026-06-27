@@ -16,6 +16,11 @@ jest.mock("../../session/redis", () => ({
   },
 }));
 
+jest.mock("../../logger", () => ({
+  logger: { info: jest.fn(), warn: jest.fn(), error: jest.fn(), debug: jest.fn() },
+}));
+const { logger } = require("../../logger");
+
 // Access the mocked module to toggle isOpen
 const getRedisClient = () => require("../../session/redis").default;
 
@@ -287,9 +292,9 @@ describe("rateLimit middleware", () => {
 
       await middleware(req as any, res as any, next);
 
-      expect(consoleWarnSpy).toHaveBeenCalledWith(
-        "Rate limiter skipped due to error:",
-        expect.any(Error)
+      expect(logger.warn).toHaveBeenCalledWith(
+        expect.objectContaining({ err: expect.any(Error) }),
+        "Rate limiter skipped due to error"
       );
       expect(next).toHaveBeenCalled();
     });
