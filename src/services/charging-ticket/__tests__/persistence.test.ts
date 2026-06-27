@@ -52,11 +52,16 @@ jest.mock("../../vehicle-battery-service", () => ({
   }),
 }));
 
+jest.mock("../../charging-history-service", () => ({
+  recordChargingHistory: jest.fn(),
+}));
+
 const mongoose = require("mongoose");
 const ChargingTicket = require("../../../models/charging-ticket").default;
 const Station = require("../../../models/station").default;
 const User = require("../../../models/user").default;
 const Vehicle = require("../../../models/vehicle").default;
+const { recordChargingHistory } = require("../../charging-history-service");
 
 describe("charging-ticket/persistence", () => {
   beforeEach(() => {
@@ -336,6 +341,30 @@ describe("charging-ticket/persistence", () => {
       await finalizeChargingTicket("ticket-123", "user-123");
 
       expect(Station.updateOne).not.toHaveBeenCalled();
+    });
+
+    it("records history and updates battery inside the transaction when options are provided", async () => {
+      await finalizeChargingTicket("ticket-123", "user-123", {
+        ticketSnapshot: { id: "ticket-123", progressPercent: 100 },
+        outcome: "COMPLETED",
+        endedAt: new Date(),
+        vehicleBatteryPercent: 87,
+      });
+
+      expect(recordChargingHistory).toHaveBeenCalledWith(
+        expect.objectContaining({
+          userId: "user-123",
+          outcome: "COMPLETED",
+          session: mockSession,
+        })
+      );
+      expect(Vehicle.updateOne).toHaveBeenCalledWith(
+        { _id: "vehicle-789" },
+        expect.objectContaining({
+          $set: expect.objectContaining({ batteryPercent: 87 }),
+        }),
+        { session: mockSession }
+      );
     });
 
     it("sets vehicle to IDLE", async () => {

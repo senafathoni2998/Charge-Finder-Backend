@@ -23,9 +23,7 @@ import {
   setActiveVehicleChargingStatus,
   finalizeChargingTicket,
   resolveChargingDurationMsForTicket,
-  updateVehicleBatteryPercentage,
 } from "../../services/charging-ticket-service";
-import { recordChargingHistory } from "../../services/charging-history-service";
 import {
   isChargingSpeedSupported,
   resolveChargingSpeed,
@@ -255,36 +253,22 @@ const getActiveTicketForStation = async (
         },
         100
       );
-      const ticketVehicleId =
-        activeTicket.vehicle?.toString?.() ??
-        activeTicket.vehicle?.id ??
-        activeTicket.vehicle;
       const completedBatteryPercentage = (
         completedTicket as { batteryPercentage?: number }
       ).batteryPercentage;
 
       try {
-        await finalizeChargingTicket(activeTicket.id, sessionUserId);
+        // History + battery are written inside the finalize transaction.
+        await finalizeChargingTicket(activeTicket.id, sessionUserId, {
+          ticketSnapshot: completedTicket,
+          outcome: "COMPLETED",
+          endedAt: completedAt,
+          vehicleBatteryPercent:
+            typeof completedBatteryPercentage === "number"
+              ? completedBatteryPercentage
+              : null,
+        });
         clearChargingProgressTimer(activeTicket.id);
-        if (
-          ticketVehicleId &&
-          typeof completedBatteryPercentage === "number"
-        ) {
-          void updateVehicleBatteryPercentage(
-            ticketVehicleId,
-            completedBatteryPercentage
-          ).catch(() => {});
-        }
-        try {
-          await recordChargingHistory({
-            userId: sessionUserId,
-            ticketSnapshot: completedTicket,
-            outcome: "COMPLETED",
-            endedAt: completedAt,
-          });
-        } catch (err) {
-          // Best-effort: history should not block completion.
-        }
         broadcastChargingProgress(
           buildChargingProgressKey(sessionUserId, stationId),
           {
@@ -740,35 +724,26 @@ const updateChargingProgress = async (
       },
       100
     );
-    const ticketVehicleId =
-      ticket.vehicle?.toString?.() ?? ticket.vehicle?.id ?? ticket.vehicle;
     const completedBatteryPercentage = (
       completedTicket as { batteryPercentage?: number }
     ).batteryPercentage;
 
     try {
-      await finalizeChargingTicket(ticket.id, sessionUserId);
+      // History + battery are written inside the finalize transaction.
+      await finalizeChargingTicket(ticket.id, sessionUserId, {
+        ticketSnapshot: completedTicket,
+        outcome: "COMPLETED",
+        endedAt: completedAt,
+        vehicleBatteryPercent:
+          typeof completedBatteryPercentage === "number"
+            ? completedBatteryPercentage
+            : null,
+      });
       clearChargingProgressTimer(ticket.id);
     } catch (err) {
       return next(
         new HttpError("Completing charging failed, please try again.", 500)
       );
-    }
-    if (ticketVehicleId && typeof completedBatteryPercentage === "number") {
-      void updateVehicleBatteryPercentage(
-        ticketVehicleId,
-        completedBatteryPercentage
-      ).catch(() => {});
-    }
-    try {
-      await recordChargingHistory({
-        userId: sessionUserId,
-        ticketSnapshot: completedTicket,
-        outcome: "COMPLETED",
-        endedAt: completedAt,
-      });
-    } catch (err) {
-      // Best-effort: history should not block completion.
     }
 
     broadcastChargingProgress(
@@ -901,35 +876,26 @@ const cancelCharging = async (
     },
     progressPercent
   );
-  const ticketVehicleId =
-    ticket.vehicle?.toString?.() ?? ticket.vehicle?.id ?? ticket.vehicle;
   const cancelledBatteryPercentage = (
     cancelledTicket as { batteryPercentage?: number }
   ).batteryPercentage;
 
   try {
-    await finalizeChargingTicket(ticket.id, sessionUserId);
+    // History + battery are written inside the finalize transaction.
+    await finalizeChargingTicket(ticket.id, sessionUserId, {
+      ticketSnapshot: cancelledTicket,
+      outcome: "CANCELLED",
+      endedAt: cancelledAt,
+      vehicleBatteryPercent:
+        typeof cancelledBatteryPercentage === "number"
+          ? cancelledBatteryPercentage
+          : null,
+    });
     clearChargingProgressTimer(ticket.id);
   } catch (err) {
     return next(
       new HttpError("Cancelling charging failed, please try again.", 500)
     );
-  }
-  if (ticketVehicleId && typeof cancelledBatteryPercentage === "number") {
-    void updateVehicleBatteryPercentage(
-      ticketVehicleId,
-      cancelledBatteryPercentage
-    ).catch(() => {});
-  }
-  try {
-    await recordChargingHistory({
-      userId: sessionUserId,
-      ticketSnapshot: cancelledTicket,
-      outcome: "CANCELLED",
-      endedAt: cancelledAt,
-    });
-  } catch (err) {
-    // Best-effort: history should not block cancellation.
   }
 
   broadcastChargingProgress(
@@ -1001,35 +967,26 @@ const completeCharging = async (
     },
     100
   );
-  const ticketVehicleId =
-    ticket.vehicle?.toString?.() ?? ticket.vehicle?.id ?? ticket.vehicle;
   const completedBatteryPercentage = (
     ticketSnapshot as { batteryPercentage?: number }
   ).batteryPercentage;
 
   try {
-    await finalizeChargingTicket(ticket.id, sessionUserId);
+    // History + battery are written inside the finalize transaction.
+    await finalizeChargingTicket(ticket.id, sessionUserId, {
+      ticketSnapshot: ticketSnapshot,
+      outcome: "COMPLETED",
+      endedAt: completedAt,
+      vehicleBatteryPercent:
+        typeof completedBatteryPercentage === "number"
+          ? completedBatteryPercentage
+          : null,
+    });
     clearChargingProgressTimer(ticket.id);
   } catch (err) {
     return next(
       new HttpError("Completing charging failed, please try again.", 500)
     );
-  }
-  if (ticketVehicleId && typeof completedBatteryPercentage === "number") {
-    void updateVehicleBatteryPercentage(
-      ticketVehicleId,
-      completedBatteryPercentage
-    ).catch(() => {});
-  }
-  try {
-    await recordChargingHistory({
-      userId: sessionUserId,
-      ticketSnapshot: ticketSnapshot,
-      outcome: "COMPLETED",
-      endedAt: completedAt,
-    });
-  } catch (err) {
-    // Best-effort: history should not block completion.
   }
 
   broadcastChargingProgress(

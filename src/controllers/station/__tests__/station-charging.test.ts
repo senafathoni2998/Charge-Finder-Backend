@@ -307,7 +307,11 @@ describe("station-charging controllers", () => {
 
     await updateChargingProgress(req as any, res as any, next);
 
-    expect(finalizeChargingTicketMock).toHaveBeenCalledWith("ticket-3", "user-1");
+    expect(finalizeChargingTicketMock).toHaveBeenCalledWith(
+      "ticket-3",
+      "user-1",
+      expect.objectContaining({ outcome: "COMPLETED" })
+    );
     expect(clearChargingProgressTimerMock).toHaveBeenCalledWith("ticket-3");
     expect(res.status).toHaveBeenCalledWith(200);
     expect(res.json).toHaveBeenCalledWith({
@@ -338,7 +342,11 @@ describe("station-charging controllers", () => {
 
     await cancelCharging(req as any, res as any, next);
 
-    expect(finalizeChargingTicketMock).toHaveBeenCalledWith("ticket-4", "user-1");
+    expect(finalizeChargingTicketMock).toHaveBeenCalledWith(
+      "ticket-4",
+      "user-1",
+      expect.objectContaining({ outcome: "CANCELLED" })
+    );
     expect(clearChargingProgressTimerMock).toHaveBeenCalledWith("ticket-4");
     expect(res.status).toHaveBeenCalledWith(200);
     expect(res.json).toHaveBeenCalledWith({
@@ -368,7 +376,11 @@ describe("station-charging controllers", () => {
 
     await completeCharging(req as any, res as any, next);
 
-    expect(finalizeChargingTicketMock).toHaveBeenCalledWith("ticket-5", "user-1");
+    expect(finalizeChargingTicketMock).toHaveBeenCalledWith(
+      "ticket-5",
+      "user-1",
+      expect.objectContaining({ outcome: "COMPLETED" })
+    );
     expect(clearChargingProgressTimerMock).toHaveBeenCalledWith("ticket-5");
     expect(res.status).toHaveBeenCalledWith(200);
     expect(res.json).toHaveBeenCalledWith({

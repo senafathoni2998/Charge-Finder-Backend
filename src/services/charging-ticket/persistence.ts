@@ -7,6 +7,10 @@ import Vehicle from "../../models/vehicle";
 import { calculateBatteryStatus } from "../vehicle-battery-service";
 import { clampBatteryPercent } from "./battery";
 import { resolveId } from "./snapshot";
+import {
+  recordChargingHistory,
+  type ChargingHistoryOutcome,
+} from "../charging-history-service";
 
 const updateVehicleBatteryPercentage = async (
   vehicleId: unknown,
@@ -141,7 +145,18 @@ const adjustStationConnectorAvailability = async (
   return { ok: true };
 };
 
-const finalizeChargingTicket = async (ticketId: string, userId: string) => {
+type FinalizeChargingTicketOptions = {
+  ticketSnapshot?: Record<string, unknown>;
+  outcome?: ChargingHistoryOutcome;
+  endedAt?: Date;
+  vehicleBatteryPercent?: number | null;
+};
+
+const finalizeChargingTicket = async (
+  ticketId: string,
+  userId: string,
+  options: FinalizeChargingTicketOptions = {}
+) => {
   const sess = await mongoose.startSession();
   sess.startTransaction();
 
@@ -179,6 +194,30 @@ const finalizeChargingTicket = async (ticketId: string, userId: string) => {
       }
     } else {
       await clearChargingStatusForUserVehicles(userId, sess);
+    }
+
+    // Write charging history and the final battery level in the SAME transaction,
+    // so a completed/cancelled session can never leave the ticket finalized while
+    // history/battery silently diverge.
+    if (deletedTicket && options.ticketSnapshot && options.outcome) {
+      await recordChargingHistory({
+        userId,
+        ticketSnapshot: options.ticketSnapshot,
+        outcome: options.outcome,
+        endedAt: options.endedAt ?? new Date(),
+        session: sess,
+      });
+    }
+
+    if (deletedTicket && typeof options.vehicleBatteryPercent === "number") {
+      const vehicleId = resolveId(deletedTicket.vehicle);
+      if (vehicleId) {
+        await updateVehicleBatteryPercentage(
+          vehicleId,
+          options.vehicleBatteryPercent,
+          sess
+        );
+      }
     }
 
     await sess.commitTransaction();
