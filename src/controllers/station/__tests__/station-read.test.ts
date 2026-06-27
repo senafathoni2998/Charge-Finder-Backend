@@ -24,9 +24,11 @@ jest.mock("../../../models/station", () => {
   const StationMock = jest.fn() as jest.Mock & {
     find: jest.Mock;
     findById: jest.Mock;
+    aggregate: jest.Mock;
   };
   StationMock.find = jest.fn();
   StationMock.findById = jest.fn();
+  StationMock.aggregate = jest.fn();
   return { __esModule: true, default: StationMock };
 });
 
@@ -53,6 +55,7 @@ const buildRes = (): MockResponse => ({
 const StationMock = Station as unknown as jest.Mock & {
   find: jest.Mock;
   findById: jest.Mock;
+  aggregate: jest.Mock;
 };
 const ChargingTicketMock = ChargingTicket as unknown as jest.Mock & {
   find: jest.Mock;
@@ -67,6 +70,7 @@ describe("station-read controllers", () => {
   beforeEach(() => {
     StationMock.find.mockReset();
     StationMock.findById.mockReset();
+    StationMock.aggregate.mockReset();
     ChargingTicketMock.find.mockReset();
     ChargingTicketMock.findOne.mockReset();
     validationResultMock.mockReset();
@@ -164,6 +168,45 @@ describe("station-read controllers", () => {
 
     expect(stationOne?.isChargingHere).toBe(true);
     expect(stationTwo?.isChargingHere).toBe(false);
+    expect(next).not.toHaveBeenCalled();
+  });
+
+  it("uses a $geoNear aggregation (not a full scan) when location is provided", async () => {
+    StationMock.aggregate.mockResolvedValue([
+      {
+        _id: "station-1",
+        name: "Nearby",
+        lat: 1.01,
+        lng: 2.01,
+        distanceMeters: 1500,
+      },
+    ]);
+
+    const req = { query: { lat: "1", lng: "2", radiusKm: "5" } };
+    const res = buildRes();
+    const next = jest.fn();
+
+    await getStations(req as any, res as any, next);
+
+    // Proximity path must hit the geo index via aggregate, never Station.find().
+    expect(StationMock.aggregate).toHaveBeenCalledTimes(1);
+    expect(StationMock.find).not.toHaveBeenCalled();
+
+    const pipeline = StationMock.aggregate.mock.calls[0][0];
+    expect(pipeline[0]).toHaveProperty("$geoNear");
+    expect(pipeline[0].$geoNear.near).toEqual({
+      type: "Point",
+      coordinates: [2, 1],
+    });
+    expect(pipeline[0].$geoNear.maxDistance).toBe(5000);
+
+    const payload = res.json.mock.calls[0][0] as {
+      stations: Array<{ id: string; distanceKm: number; isChargingHere: boolean }>;
+    };
+    expect(payload.stations).toHaveLength(1);
+    expect(payload.stations[0].id).toBe("station-1");
+    expect(payload.stations[0].distanceKm).toBe(1.5);
+    expect(payload.stations[0].isChargingHere).toBe(false);
     expect(next).not.toHaveBeenCalled();
   });
 

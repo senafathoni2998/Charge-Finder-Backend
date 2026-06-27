@@ -2,7 +2,7 @@ import { Request, Response, NextFunction } from "express";
 import { validationResult } from "express-validator";
 
 import HttpError from "../../models/http-error";
-import Station from "../../models/station";
+import Station, { toGeoPoint } from "../../models/station";
 
 /**
  * Creates a new charging station
@@ -46,6 +46,7 @@ const addStation = async (req: Request, res: Response, next: NextFunction) => {
     pricing,
     amenities,
     notes,
+    location: toGeoPoint(lat, lng),
   });
 
   try {
@@ -121,6 +122,11 @@ const updateStation = async (
 
   if (lng !== undefined) {
     station.lng = lng;
+  }
+
+  // Keep the GeoJSON location in sync whenever coordinates change.
+  if (lat !== undefined || lng !== undefined) {
+    station.set("location", toGeoPoint(station.lat, station.lng));
   }
 
   if (typeof address === "string") {

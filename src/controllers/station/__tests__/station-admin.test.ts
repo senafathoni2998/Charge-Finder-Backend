@@ -10,7 +10,14 @@ jest.mock("express-validator", () => ({
 jest.mock("../../../models/station", () => {
   const StationMock = jest.fn() as jest.Mock & { findById: jest.Mock };
   StationMock.findById = jest.fn();
-  return { __esModule: true, default: StationMock };
+  return {
+    __esModule: true,
+    default: StationMock,
+    toGeoPoint: (lat: unknown, lng: unknown) =>
+      typeof lat === "number" && typeof lng === "number"
+        ? { type: "Point", coordinates: [lng, lat] }
+        : undefined,
+  };
 });
 
 type MockResponse = {

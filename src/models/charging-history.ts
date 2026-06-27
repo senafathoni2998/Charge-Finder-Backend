@@ -28,4 +28,7 @@ const chargingHistorySchema = new Schema(
   { timestamps: true }
 );
 
+// Hot path: a user's recent charging history, newest first.
+chargingHistorySchema.index({ user: 1, createdAt: -1 });
+
 export default model("ChargingHistory", chargingHistorySchema);

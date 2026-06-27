@@ -22,4 +22,8 @@ const vehicleSchema = new Schema({
   owner: { type: Types.ObjectId, ref: "User", required: true },
 });
 
+// Hot path: list / count a user's vehicles, and find their active vehicle.
+vehicleSchema.index({ owner: 1 });
+vehicleSchema.index({ owner: 1, active: 1 });
+
 export default model("Vehicle", vehicleSchema);

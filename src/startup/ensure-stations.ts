@@ -20,7 +20,14 @@ export async function ensureStationsSeeded() {
 
     const stationsToInsert = MOCK_STATIONS.filter(
       (station) => !existingKeys.has(stationKey(station))
-    ).map(({ id: _id, ...station }) => station);
+    ).map(({ id: _id, ...station }) => ({
+      ...station,
+      // insertMany bypasses the pre('validate') hook, so set the GeoJSON point here.
+      location: {
+        type: "Point" as const,
+        coordinates: [station.lng, station.lat] as [number, number],
+      },
+    }));
 
     if (stationsToInsert.length === 0) {
       console.log("Stations already seeded");

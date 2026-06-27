@@ -32,4 +32,9 @@ const chargingTicketSchema = new Schema(
   { timestamps: true }
 );
 
+// Hot paths: "active ticket(s) for this user (optionally at this station)".
+chargingTicketSchema.index({ user: 1, status: 1, chargingStatus: 1 });
+chargingTicketSchema.index({ user: 1, station: 1, chargingStatus: 1 });
+chargingTicketSchema.index({ station: 1 });
+
 export default model("ChargingTicket", chargingTicketSchema);

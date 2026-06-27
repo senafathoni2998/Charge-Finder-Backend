@@ -5,6 +5,7 @@
   "scripts": {
     "start": "nodemon --exec ts-node --files src/app.ts",
     "backfill:battery-capacity": "ts-node --files src/scripts/backfill-battery-capacity.ts",
+    "backfill:station-location": "ts-node --files src/scripts/backfill-station-location.ts",
     "typecheck": "tsc --noEmit",
     "test": "jest",
     "test:ci": "jest --ci --runInBand"
