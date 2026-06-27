@@ -28,6 +28,10 @@ const chargingTicketSchema = new Schema(
     startingBatteryPercent: { type: Number, min: 0, max: 100 },
     startedAt: { type: Date },
     completedAt: { type: Date },
+    // True once this ticket has reserved a physical connector port (set when
+    // charging starts). Port release on completion/cancel is gated on this so we
+    // never free a port a ticket never reserved.
+    portReserved: { type: Boolean, default: false },
   },
   { timestamps: true }
 );

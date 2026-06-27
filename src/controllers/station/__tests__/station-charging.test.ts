@@ -202,6 +202,8 @@ describe("station-charging controllers", () => {
     const session = {
       startTransaction: jest.fn(),
       commitTransaction: jest.fn(),
+      abortTransaction: jest.fn(),
+      endSession: jest.fn(),
     };
     mongooseMock.startSession.mockResolvedValue(session);
 

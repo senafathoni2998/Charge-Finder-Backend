@@ -158,17 +158,20 @@ const requestChargingTicket = async (
         : undefined,
   });
 
+  const sess = await mongoose.startSession();
   try {
-    const sess = await mongoose.startSession();
     sess.startTransaction();
     await newTicket.save({ session: sess });
     user.tickets.push(newTicket._id);
     await user.save({ session: sess });
     await sess.commitTransaction();
   } catch (err) {
+    await sess.abortTransaction();
     return next(
       new HttpError("Requesting ticket failed, please try again.", 500)
     );
+  } finally {
+    sess.endSession();
   }
 
   const ticketPayload = await buildChargingTicketPayload(newTicket, {
@@ -555,11 +558,16 @@ const startCharging = async (
     targetBatteryPercent
   );
 
-  const shouldReserveConnector =
-    ticket.chargingStatus !== "IN_PROGRESS" || !ticket.startedAt;
-
+  // Atomically claim the port reservation so two concurrent start requests can't
+  // each reserve a port for the same ticket: only the request that flips
+  // portReserved false->true goes on to reserve a physical port.
   let reservedConnector = false;
-  if (shouldReserveConnector) {
+  const reservationClaim = await ChargingTicket.findOneAndUpdate(
+    { _id: ticket.id, portReserved: { $ne: true } },
+    { $set: { portReserved: true } }
+  );
+
+  if (reservationClaim) {
     try {
       const reserveResult = await adjustStationConnectorAvailability(
         stationId,
@@ -568,6 +576,11 @@ const startCharging = async (
       );
 
       if (!reserveResult.ok) {
+        // Release the claim so the ticket isn't left "reserved" with no port.
+        await ChargingTicket.updateOne(
+          { _id: ticket.id },
+          { $set: { portReserved: false } }
+        ).catch(() => undefined);
         return next(
           new HttpError(
             "No available ports for the selected connector type.",
@@ -577,12 +590,17 @@ const startCharging = async (
       }
       reservedConnector = true;
     } catch (err) {
+      await ChargingTicket.updateOne(
+        { _id: ticket.id },
+        { $set: { portReserved: false } }
+      ).catch(() => undefined);
       return next(
         new HttpError("Starting charging failed, please try again.", 500)
       );
     }
   }
 
+  ticket.portReserved = true;
   ticket.chargingStatus = "IN_PROGRESS";
   ticket.startedAt = ticket.startedAt ?? new Date();
   ticket.completedAt = undefined;
@@ -612,6 +630,10 @@ const startCharging = async (
       } catch (rollbackErr) {
         // Ignore rollback failures; the connector count will be reconciled later.
       }
+      await ChargingTicket.updateOne(
+        { _id: ticket.id },
+        { $set: { portReserved: false } }
+      ).catch(() => undefined);
     }
     return next(
       new HttpError("Starting charging failed, please try again.", 500)

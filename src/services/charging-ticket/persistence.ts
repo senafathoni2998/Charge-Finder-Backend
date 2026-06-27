@@ -113,14 +113,19 @@ const adjustStationConnectorAvailability = async (
     return { ok: false, reason: "not_found" };
   }
 
+  // Use $elemMatch so the type filter, the availability guard, and the positional
+  // ($) update all bind to the SAME connector. With separate dotted conditions
+  // MongoDB can satisfy "some connector has the type" and "some (other) connector
+  // has ports", then decrement the wrong element below zero (overbooking).
   const query: Record<string, unknown> = {
     _id: stationId,
-    "connectors.type": connectorType,
+    connectors: {
+      $elemMatch:
+        delta < 0
+          ? { type: connectorType, availablePorts: { $gt: 0 } }
+          : { type: connectorType },
+    },
   };
-
-  if (delta < 0) {
-    query["connectors.availablePorts"] = { $gt: 0 };
-  }
 
   const options = session ? { session } : undefined;
   const result = await Station.updateOne(
@@ -151,7 +156,11 @@ const finalizeChargingTicket = async (ticketId: string, userId: string) => {
       { session: sess }
     );
 
-    if (deletedTicket?.connectorType) {
+    // Only release a port if this ticket actually reserved one. connectorType is
+    // set at request time, but a reservation only happens when charging starts —
+    // releasing on connectorType alone inflates availablePorts above the physical
+    // port count for tickets that were requested/cancelled but never started.
+    if (deletedTicket?.portReserved && deletedTicket?.connectorType) {
       const stationId = resolveId(deletedTicket.station);
       if (stationId) {
         await adjustStationConnectorAvailability(

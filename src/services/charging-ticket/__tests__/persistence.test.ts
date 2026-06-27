@@ -230,7 +230,7 @@ describe("charging-ticket/persistence", () => {
       const result = await adjustStationConnectorAvailability("station-123", "CCS2", 1);
 
       expect(Station.updateOne).toHaveBeenCalledWith(
-        { _id: "station-123", "connectors.type": "CCS2" },
+        { _id: "station-123", connectors: { $elemMatch: { type: "CCS2" } } },
         { $inc: { "connectors.$.availablePorts": 1 } },
         undefined
       );
@@ -243,8 +243,9 @@ describe("charging-ticket/persistence", () => {
       expect(Station.updateOne).toHaveBeenCalledWith(
         {
           _id: "station-123",
-          "connectors.type": "CCS2",
-          "connectors.availablePorts": { $gt: 0 },
+          connectors: {
+            $elemMatch: { type: "CCS2", availablePorts: { $gt: 0 } },
+          },
         },
         { $inc: { "connectors.$.availablePorts": -1 } },
         undefined
@@ -285,6 +286,7 @@ describe("charging-ticket/persistence", () => {
           connectorType: "CCS2",
           station: "station-123",
           vehicle: "vehicle-789",
+          portReserved: true,
         }),
       });
       User.updateOne.mockResolvedValue({ matchedCount: 1 });
@@ -319,6 +321,21 @@ describe("charging-ticket/persistence", () => {
       await finalizeChargingTicket("ticket-123", "user-123");
 
       expect(Station.updateOne).toHaveBeenCalled();
+    });
+
+    it("does NOT restore a port for a ticket that never reserved one", async () => {
+      ChargingTicket.findOneAndDelete.mockReturnValue({
+        session: jest.fn().mockResolvedValue({
+          connectorType: "CCS2",
+          station: "station-123",
+          vehicle: "vehicle-789",
+          portReserved: false,
+        }),
+      });
+
+      await finalizeChargingTicket("ticket-123", "user-123");
+
+      expect(Station.updateOne).not.toHaveBeenCalled();
     });
 
     it("sets vehicle to IDLE", async () => {
