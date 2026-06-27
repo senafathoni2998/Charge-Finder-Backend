@@ -1,4 +1,5 @@
 node_modules
+dist
 .env
 uploads*
 # nodemon.json is no longer committed: it previously held live secrets.
