@@ -3,7 +3,7 @@ import { validationResult } from "express-validator";
 import mongoose from "mongoose";
 
 import HttpError from "../../models/http-error";
-import Station from "../../models/station";
+import Station, { toGeoPoint } from "../../models/station";
 import ChargingTicket from "../../models/charging-ticket";
 import {
   getCachedJson,
@@ -11,6 +11,57 @@ import {
   stationByIdKey,
   stationGeoKey,
 } from "../../services/station-cache";
+import { config } from "../../config";
+
+// First-time UX: when a user has no station near them AND demo data is enabled
+// (config.enableDemoData — ON in demo/dev, OFF in production), seed one station per
+// status near them so every status state is visible. Gated so this never writes on
+// a GET at production scale.
+const DEMO_STATUSES = ["AVAILABLE", "BUSY", "OFFLINE"] as const;
+const DEMO_NAMES = ["Fast Charge Hub", "EV Power Station", "Quick Charge Point"];
+
+const toRadians = (deg: number) => (deg * Math.PI) / 180;
+
+// A random coordinate within radiusKm of a center (uniform over the disc).
+const randomDemoCoordinate = (lat: number, lng: number, radiusKm: number) => {
+  const radiusDeg = radiusKm / 111;
+  const angle = Math.random() * 2 * Math.PI;
+  const distance = Math.sqrt(Math.random()) * radiusDeg;
+  return {
+    lat: lat + distance * Math.cos(angle),
+    lng: lng + (distance * Math.sin(angle)) / Math.cos(toRadians(lat)),
+  };
+};
+
+// Builds exactly one demo station per status (AVAILABLE/BUSY/OFFLINE) near a center.
+const buildDemoStations = (centerLat: number, centerLng: number) =>
+  DEMO_STATUSES.map((status, i) => {
+    const { lat, lng } = randomDemoCoordinate(centerLat, centerLng, 12);
+    const availablePorts = status === "AVAILABLE" ? 2 : 0;
+    return {
+      name: `${DEMO_NAMES[i]} (Demo · ${status})`,
+      lat,
+      lng,
+      location: toGeoPoint(lat, lng),
+      address: `Demo location ${i + 1}`,
+      status,
+      connectors: [
+        { type: "CCS2", powerKW: 50, ports: 2, availablePorts },
+        { type: "Type2", powerKW: 22, ports: 2, availablePorts },
+      ],
+      pricing: { currency: "IDR", perKwh: 2700 },
+      amenities: ["Restroom", "Wi-Fi"],
+      photos: [
+        {
+          label: "Entrance",
+          gradient:
+            "linear-gradient(135deg, rgba(124,92,255,0.55), rgba(0,229,255,0.35))",
+        },
+      ],
+      notes: "Demo station — shown so you can see each station status.",
+      lastUpdatedISO: new Date().toISOString(),
+    };
+  });
 
 /**
  * Normalizes query parameter values (handles arrays)
@@ -213,6 +264,18 @@ const getStations = async (
           string,
           unknown
         >[];
+        if (!nearbyDocs.length && config.enableDemoData) {
+          // First-time user with nothing nearby — seed one station per status near
+          // them, then re-run the geo query so they come back with distances. Only
+          // runs in demo mode, so this is never a write on a GET at scale.
+          await Station.insertMany(
+            buildDemoStations(userLat as number, userLng as number),
+          );
+          nearbyDocs = (await Station.aggregate(geoPipeline)) as Record<
+            string,
+            unknown
+          >[];
+        }
         await setCachedJson(cacheKey, nearbyDocs);
       } catch (err) {
         return next(
