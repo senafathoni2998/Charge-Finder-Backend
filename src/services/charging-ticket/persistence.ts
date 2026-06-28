@@ -132,9 +132,16 @@ const adjustStationConnectorAvailability = async (
   };
 
   const options = session ? { session } : undefined;
+  // Connector availability is real station data, so stamp lastUpdatedISO in the
+  // same atomic update. Otherwise the "Updated Xm ago" UI reflects only the last
+  // admin edit, never the start/complete/cancel-charging port changes that flow
+  // through here — lastUpdatedISO is otherwise written only on the admin path.
   const result = await Station.updateOne(
     query,
-    { $inc: { "connectors.$.availablePorts": delta } },
+    {
+      $inc: { "connectors.$.availablePorts": delta },
+      $set: { lastUpdatedISO: new Date().toISOString() },
+    },
     options
   );
 

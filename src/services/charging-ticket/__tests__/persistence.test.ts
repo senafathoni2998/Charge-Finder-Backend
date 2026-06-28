@@ -236,7 +236,10 @@ describe("charging-ticket/persistence", () => {
 
       expect(Station.updateOne).toHaveBeenCalledWith(
         { _id: "station-123", connectors: { $elemMatch: { type: "CCS2" } } },
-        { $inc: { "connectors.$.availablePorts": 1 } },
+        {
+          $inc: { "connectors.$.availablePorts": 1 },
+          $set: { lastUpdatedISO: expect.any(String) },
+        },
         undefined
       );
       expect(result).toEqual({ ok: true });
@@ -252,9 +255,23 @@ describe("charging-ticket/persistence", () => {
             $elemMatch: { type: "CCS2", availablePorts: { $gt: 0 } },
           },
         },
-        { $inc: { "connectors.$.availablePorts": -1 } },
+        {
+          $inc: { "connectors.$.availablePorts": -1 },
+          $set: { lastUpdatedISO: expect.any(String) },
+        },
         undefined
       );
+    });
+
+    it("stamps a fresh lastUpdatedISO on every adjustment", async () => {
+      const before = Date.now();
+      await adjustStationConnectorAvailability("station-123", "CCS2", -1);
+
+      const [, update] = Station.updateOne.mock.calls[0];
+      const stamped = Date.parse(update.$set.lastUpdatedISO);
+      expect(Number.isNaN(stamped)).toBe(false);
+      expect(stamped).toBeGreaterThanOrEqual(before - 1000);
+      expect(stamped).toBeLessThanOrEqual(Date.now() + 1000);
     });
 
     it("returns { ok: false, reason: no_available_ports } when decrement fails", async () => {
