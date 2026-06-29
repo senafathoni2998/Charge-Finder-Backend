@@ -15,7 +15,11 @@ import sessionMiddleware from "./session/session";
 import { authMiddleware } from "./middleware/authMiddleware";
 import { rateLimitMiddleware } from "./middleware/rateLimit";
 import { initChargingProgressWebSocketServer } from "./realtime/charging-progress";
-import { getStationById, getStations } from "./controllers/station-controllers";
+import {
+  getStationById,
+  getStations,
+  listStationReviews,
+} from "./controllers/station-controllers";
 import vehicle from "./models/vehicle";
 import { ensureAdminUser } from "./startup/ensure-admin";
 import { ensureStationsSeeded } from "./startup/ensure-stations";
@@ -115,6 +119,8 @@ app.use("/api/auth", authRoutes);
 // Public stations list (no login required).
 app.get("/api/stations", getStations);
 app.get("/api/stations/:stationId", getStationById);
+// Public reviews list for a station (no login required).
+app.get("/api/stations/:stationId/reviews", listStationReviews);
 
 // Protect everything below
 app.use(authMiddleware);
