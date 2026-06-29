@@ -3,8 +3,12 @@
   "version": "1.0.0",
   "main": "index.js",
   "scripts": {
-    "start": "nodemon --exec ts-node --files src/app.ts",
+    "dev": "nodemon --exec ts-node --files src/app.ts",
+    "build": "tsc -p tsconfig.build.json",
+    "start": "node dist/app.js",
     "backfill:battery-capacity": "ts-node --files src/scripts/backfill-battery-capacity.ts",
+    "backfill:station-location": "ts-node --files src/scripts/backfill-station-location.ts",
+    "typecheck": "tsc --noEmit",
     "test": "jest",
     "test:ci": "jest --ci --runInBand"
   },
@@ -23,9 +27,11 @@
     "jsonwebtoken": "^9.0.3",
     "mongoose": "^9.1.1",
     "multer": "^2.0.2",
+    "pino": "^10.3.1",
     "redis": "^5.10.0",
     "uuid": "^13.0.0",
-    "ws": "^8.19.0"
+    "ws": "^8.19.0",
+    "zod": "^4.4.3"
   },
   "devDependencies": {
     "@types/connect-redis": "^0.0.23",

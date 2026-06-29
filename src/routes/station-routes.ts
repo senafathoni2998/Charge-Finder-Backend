@@ -121,6 +121,44 @@ router.get(
   stationControllers.getActiveTicketForStation
 );
 
+// --- Station reviews & ratings ---
+// (The public reviews list — GET /api/stations/:stationId/reviews — is registered in
+//  app.ts before the auth middleware, alongside the other public station reads.)
+
+// Create or update the caller's own review. Restricted in the controller to users
+// who have completed a charging session at the station.
+router.post(
+  "/:stationId/reviews",
+  [
+    check("stationId").not().isEmpty(),
+    check("rating").isInt({ min: 1, max: 5 }).toInt(),
+    check("comment").optional().isString().isLength({ max: 1000 }),
+  ],
+  stationControllers.createOrUpdateStationReview
+);
+
+// Fetch the caller's own review for a station (or null).
+router.get(
+  "/:stationId/reviews/me",
+  [check("stationId").not().isEmpty()],
+  stationControllers.getMyStationReview
+);
+
+// Delete the caller's own review.
+router.delete(
+  "/:stationId/reviews",
+  [check("stationId").not().isEmpty()],
+  stationControllers.deleteMyStationReview
+);
+
+// Admin moderation: delete any review by id.
+router.delete(
+  "/:stationId/reviews/:reviewId",
+  adminMiddleware,
+  [check("reviewId").not().isEmpty()],
+  stationControllers.adminDeleteStationReview
+);
+
 router.delete(
   "/delete-station",
   adminMiddleware,

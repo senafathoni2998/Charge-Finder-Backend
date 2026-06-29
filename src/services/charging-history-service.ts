@@ -1,3 +1,5 @@
+import type { ClientSession } from "mongoose";
+
 import ChargingHistory from "../models/charging-history";
 
 export type ChargingHistoryOutcome = "COMPLETED" | "CANCELLED";
@@ -132,11 +134,13 @@ export const recordChargingHistory = async ({
   ticketSnapshot,
   outcome,
   endedAt,
+  session,
 }: {
   userId: string;
   ticketSnapshot: Record<string, unknown>;
   outcome: ChargingHistoryOutcome;
   endedAt: Date;
+  session?: ClientSession;
 }) => {
   if (!userId || !ticketSnapshot || !outcome) {
     return null;
@@ -185,7 +189,7 @@ export const recordChargingHistory = async ({
   });
 
   try {
-    await historyEntry.save();
+    await historyEntry.save(session ? { session } : undefined);
   } catch (err) {
     const error = err as { code?: number };
     if (error?.code === 11000) {

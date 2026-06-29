@@ -1,12 +1,9 @@
 import session from "express-session";
 import redisClient from "./redis";
+import { config } from "../config";
 
 // ✅ correct import for connect-redis v7
 const RedisStore = require("connect-redis").default;
-
-if (!process.env.SESSION_SECRET) {
-  throw new Error("SESSION_SECRET is not defined");
-}
 
 const sessionMiddleware = session({
   name: "sid",
@@ -14,13 +11,13 @@ const sessionMiddleware = session({
     client: redisClient,
     prefix: "sess:",
   }),
-  secret: process.env.SESSION_SECRET as string,
+  secret: config.sessionSecret,
   resave: false,
   saveUninitialized: false,
-  proxy: process.env.NODE_ENV === "production",
+  proxy: config.isProduction,
   cookie: {
     httpOnly: true,
-    secure: process.env.NODE_ENV === "production",
+    secure: config.isProduction,
     sameSite: "lax",
     maxAge: 1000 * 60 * 60 * 24,
   },

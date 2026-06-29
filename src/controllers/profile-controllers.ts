@@ -83,11 +83,13 @@ const passwordUpdate = async (
     );
   }
   
-  // Extract required fields from request body
-  // userId: ID of user changing password
-  // currentPassword: User's existing password (for verification)
-  // newPassword: The new password user wants to set
-  const { userId, currentPassword, newPassword } = req.body;
+  // Authorization: always act on the authenticated session user — never trust a
+  // userId from the request body (prevents IDOR: changing another account's password).
+  const userId = req.session?.user?.id;
+  if (!userId) {
+    return next(new HttpError("Not authenticated.", 401));
+  }
+  const { currentPassword, newPassword } = req.body;
 
   // Initialize variable to hold user document from database
   let user;
@@ -193,11 +195,13 @@ const profileUpdate = async (
     );
   }
 
-  // Extract profile fields from request body
-  // name: User's display name (optional - can be undefined)
-  // region: User's location/region (optional - can be undefined)
-  // userId: ID of user being updated (required)
-  const { name, region, userId } = req.body;
+  // Authorization: act on the authenticated session user only — ignore any body
+  // userId (prevents IDOR: editing another user's profile).
+  const userId = req.session?.user?.id;
+  if (!userId) {
+    return next(new HttpError("Not authenticated.", 401));
+  }
+  const { name, region } = req.body;
   
   // Initialize variable to hold user document
   let user;

@@ -1,23 +1,11 @@
 import type { Request, Response, NextFunction } from "express";
 
 import redisClient from "../session/redis";
+import { config } from "../config";
+import { logger } from "../logger";
 
-const DEFAULT_WINDOW_MS = 60_000;
-const DEFAULT_MAX = 60;
-
-const parsePositiveInt = (value: string | undefined, fallback: number) => {
-  const parsed = Number.parseInt(value ?? "", 10);
-  return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
-};
-
-const RATE_LIMIT_WINDOW_MS = parsePositiveInt(
-  process.env.RATE_LIMIT_WINDOW_MS,
-  DEFAULT_WINDOW_MS
-);
-const RATE_LIMIT_MAX = parsePositiveInt(
-  process.env.RATE_LIMIT_MAX,
-  DEFAULT_MAX
-);
+const RATE_LIMIT_WINDOW_MS = config.rateLimit.windowMs;
+const RATE_LIMIT_MAX = config.rateLimit.max;
 
 type RateLimitOptions = {
   windowMs?: number;
@@ -100,7 +88,7 @@ export const createRateLimitMiddleware = (options: RateLimitOptions = {}) => {
           .json({ message: "Too many requests, please slow down." });
       }
     } catch (error) {
-      console.warn("Rate limiter skipped due to error:", error);
+      logger.warn({ err: error }, "Rate limiter skipped due to error");
     }
 
     return next();

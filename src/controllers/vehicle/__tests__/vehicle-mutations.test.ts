@@ -95,7 +95,7 @@ describe("vehicle-mutations controllers", () => {
       });
 
       it("returns 500 if user lookup fails", async () => {
-          const req = { body: { userId: "u1" } };
+          const req = { body: { userId: "u1" }, user: { id: "u1" } };
           const res = buildRes();
           const next = jest.fn();
           UserMock.findById.mockRejectedValue(new Error("DB Error"));
@@ -107,7 +107,7 @@ describe("vehicle-mutations controllers", () => {
       });
 
       it("returns 422 if user does not exist", async () => {
-          const req = { body: { userId: "u1" } };
+          const req = { body: { userId: "u1" }, user: { id: "u1" } };
           const res = buildRes();
           const next = jest.fn();
           UserMock.findById.mockResolvedValue(null);
@@ -119,7 +119,7 @@ describe("vehicle-mutations controllers", () => {
       });
 
       it("returns 422 if max vehicles limit reached", async () => {
-        const req = { body: { userId: "u1" } };
+        const req = { body: { userId: "u1" }, user: { id: "u1" } };
         const res = buildRes();
         const next = jest.fn();
         UserMock.findById.mockResolvedValue({ _id: "u1" });
@@ -133,14 +133,15 @@ describe("vehicle-mutations controllers", () => {
       });
 
       it("creates vehicle successfully", async () => {
-        const req = { 
-            body: { 
-                name: "Tesla", 
-                connector_type: ["Type 2"], 
-                min_power: 11, 
+        const req = {
+            body: {
+                name: "Tesla",
+                connector_type: ["Type 2"],
+                min_power: 11,
                 userId: "u1",
-                batteryCapacity: 75 
-            } 
+                batteryCapacity: 75
+            },
+            user: { id: "u1" }
         };
         const res = buildRes();
         const next = jest.fn();

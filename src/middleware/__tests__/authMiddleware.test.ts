@@ -101,20 +101,9 @@ describe("authMiddleware", () => {
       expect(res.status).not.toHaveBeenCalled();
     });
 
-    it("logs authentication check details", () => {
-      const req = buildReq({
-        method: "GET",
-        headers: { cookie: "test-cookie" },
-        sessionID: "session-123",
-        session: { user: { id: "u1", username: "test", role: "user" as const } },
-      });
-      const res = buildRes();
-      const next = jest.fn();
-
-      authMiddleware(req as any, res as any, next);
-
-      expect(consoleSpy).toHaveBeenCalledWith("AUTH CHECK:", expect.any(Object));
-    });
+    // NOTE: the previous "logs authentication check details" test was removed —
+    // authMiddleware deliberately no longer logs the raw cookie/session (it leaked
+    // valid session credentials into logs). See app.ts / Sprint 0 security fixes.
   });
 
   describe("adminMiddleware", () => {

@@ -5,13 +5,7 @@ export function authMiddleware(
   res: Response,
   next: NextFunction
 ) {
-    console.log("AUTH CHECK:", {
-    cookie: req.headers.cookie,
-    sessionID: req.sessionID,
-    session: req.session,
-  });
-
-    if (req.method === "OPTIONS") {
+  if (req.method === "OPTIONS") {
     return next();
   }
 

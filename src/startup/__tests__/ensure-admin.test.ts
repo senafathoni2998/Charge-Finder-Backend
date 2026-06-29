@@ -18,7 +18,12 @@ jest.mock("../../models/user", () => {
   };
 });
 
+jest.mock("../../logger", () => ({
+  logger: { info: jest.fn(), warn: jest.fn(), error: jest.fn(), debug: jest.fn() },
+}));
+
 const User = require("../../models/user").default;
+const { logger } = require("../../logger");
 
 describe("startup/ensure-admin", () => {
   const originalEnv = process.env;
@@ -52,7 +57,7 @@ describe("startup/ensure-admin", () => {
     await ensureAdminUser();
 
     expect(User.findOne).toHaveBeenCalledWith({ role: "admin" });
-    expect(consoleSpy).toHaveBeenCalledWith(
+    expect(logger.info).toHaveBeenCalledWith(
       expect.stringContaining("Admin user exists")
     );
     // Should not create new user
@@ -69,7 +74,7 @@ describe("startup/ensure-admin", () => {
 
     await ensureAdminUser();
 
-    expect(consoleSpy).toHaveBeenCalledWith(
+    expect(logger.warn).toHaveBeenCalledWith(
       expect.stringContaining("No admin user found")
     );
 
@@ -102,7 +107,7 @@ describe("startup/ensure-admin", () => {
 
     expect(existingUser.role).toBe("admin");
     expect(mockSave).toHaveBeenCalled();
-    expect(consoleSpy).toHaveBeenCalledWith(
+    expect(logger.info).toHaveBeenCalledWith(
       expect.stringContaining("Promoted user to admin")
     );
 
@@ -147,7 +152,7 @@ describe("startup/ensure-admin", () => {
     const mockInstance = User.mock.results[0].value;
     expect(mockInstance.save).toHaveBeenCalled();
     
-    expect(consoleSpy).toHaveBeenCalledWith(
+    expect(logger.info).toHaveBeenCalledWith(
       expect.stringContaining("Admin user created")
     );
 
@@ -166,9 +171,9 @@ describe("startup/ensure-admin", () => {
 
     await ensureAdminUser();
 
-    expect(consoleSpy).toHaveBeenCalledWith(
-      "Failed to ensure admin user:",
-      error
+    expect(logger.error).toHaveBeenCalledWith(
+      { err: error },
+      "Failed to ensure admin user"
     );
 
     consoleSpy.mockRestore();

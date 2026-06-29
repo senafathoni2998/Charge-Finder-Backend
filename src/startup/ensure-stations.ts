@@ -1,5 +1,6 @@
 import StationModel from "../models/station";
 import { MOCK_STATIONS } from "./data/stations";
+import { logger } from "../logger";
 
 type StationSeed = (typeof MOCK_STATIONS)[number];
 
@@ -20,16 +21,23 @@ export async function ensureStationsSeeded() {
 
     const stationsToInsert = MOCK_STATIONS.filter(
       (station) => !existingKeys.has(stationKey(station))
-    ).map(({ id: _id, ...station }) => station);
+    ).map(({ id: _id, ...station }) => ({
+      ...station,
+      // insertMany bypasses the pre('validate') hook, so set the GeoJSON point here.
+      location: {
+        type: "Point" as const,
+        coordinates: [station.lng, station.lat] as [number, number],
+      },
+    }));
 
     if (stationsToInsert.length === 0) {
-      console.log("Stations already seeded");
+      logger.info("Stations already seeded");
       return;
     }
 
     await StationModel.insertMany(stationsToInsert, { ordered: false });
-    console.log(`Seeded ${stationsToInsert.length} stations`);
+    logger.info(`Seeded ${stationsToInsert.length} stations`);
   } catch (err) {
-    console.error("Failed to seed stations:", err);
+    logger.error({ err }, "Failed to seed stations");
   }
 }

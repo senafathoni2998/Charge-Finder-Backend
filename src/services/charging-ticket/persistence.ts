@@ -7,6 +7,10 @@ import Vehicle from "../../models/vehicle";
 import { calculateBatteryStatus } from "../vehicle-battery-service";
 import { clampBatteryPercent } from "./battery";
 import { resolveId } from "./snapshot";
+import {
+  recordChargingHistory,
+  type ChargingHistoryOutcome,
+} from "../charging-history-service";
 
 const updateVehicleBatteryPercentage = async (
   vehicleId: unknown,
@@ -113,19 +117,31 @@ const adjustStationConnectorAvailability = async (
     return { ok: false, reason: "not_found" };
   }
 
+  // Use $elemMatch so the type filter, the availability guard, and the positional
+  // ($) update all bind to the SAME connector. With separate dotted conditions
+  // MongoDB can satisfy "some connector has the type" and "some (other) connector
+  // has ports", then decrement the wrong element below zero (overbooking).
   const query: Record<string, unknown> = {
     _id: stationId,
-    "connectors.type": connectorType,
+    connectors: {
+      $elemMatch:
+        delta < 0
+          ? { type: connectorType, availablePorts: { $gt: 0 } }
+          : { type: connectorType },
+    },
   };
 
-  if (delta < 0) {
-    query["connectors.availablePorts"] = { $gt: 0 };
-  }
-
   const options = session ? { session } : undefined;
+  // Connector availability is real station data, so stamp lastUpdatedISO in the
+  // same atomic update. Otherwise the "Updated Xm ago" UI reflects only the last
+  // admin edit, never the start/complete/cancel-charging port changes that flow
+  // through here — lastUpdatedISO is otherwise written only on the admin path.
   const result = await Station.updateOne(
     query,
-    { $inc: { "connectors.$.availablePorts": delta } },
+    {
+      $inc: { "connectors.$.availablePorts": delta },
+      $set: { lastUpdatedISO: new Date().toISOString() },
+    },
     options
   );
 
@@ -136,7 +152,18 @@ const adjustStationConnectorAvailability = async (
   return { ok: true };
 };
 
-const finalizeChargingTicket = async (ticketId: string, userId: string) => {
+type FinalizeChargingTicketOptions = {
+  ticketSnapshot?: Record<string, unknown>;
+  outcome?: ChargingHistoryOutcome;
+  endedAt?: Date;
+  vehicleBatteryPercent?: number | null;
+};
+
+const finalizeChargingTicket = async (
+  ticketId: string,
+  userId: string,
+  options: FinalizeChargingTicketOptions = {}
+) => {
   const sess = await mongoose.startSession();
   sess.startTransaction();
 
@@ -151,7 +178,11 @@ const finalizeChargingTicket = async (ticketId: string, userId: string) => {
       { session: sess }
     );
 
-    if (deletedTicket?.connectorType) {
+    // Only release a port if this ticket actually reserved one. connectorType is
+    // set at request time, but a reservation only happens when charging starts —
+    // releasing on connectorType alone inflates availablePorts above the physical
+    // port count for tickets that were requested/cancelled but never started.
+    if (deletedTicket?.portReserved && deletedTicket?.connectorType) {
       const stationId = resolveId(deletedTicket.station);
       if (stationId) {
         await adjustStationConnectorAvailability(
@@ -170,6 +201,30 @@ const finalizeChargingTicket = async (ticketId: string, userId: string) => {
       }
     } else {
       await clearChargingStatusForUserVehicles(userId, sess);
+    }
+
+    // Write charging history and the final battery level in the SAME transaction,
+    // so a completed/cancelled session can never leave the ticket finalized while
+    // history/battery silently diverge.
+    if (deletedTicket && options.ticketSnapshot && options.outcome) {
+      await recordChargingHistory({
+        userId,
+        ticketSnapshot: options.ticketSnapshot,
+        outcome: options.outcome,
+        endedAt: options.endedAt ?? new Date(),
+        session: sess,
+      });
+    }
+
+    if (deletedTicket && typeof options.vehicleBatteryPercent === "number") {
+      const vehicleId = resolveId(deletedTicket.vehicle);
+      if (vehicleId) {
+        await updateVehicleBatteryPercentage(
+          vehicleId,
+          options.vehicleBatteryPercent,
+          sess
+        );
+      }
     }
 
     await sess.commitTransaction();

@@ -1,23 +1,21 @@
 import { createClient } from "redis";
 
-// Support password via REDIS_URL: redis://[:password@]host:port
-// Or via separate REDIS_PASSWORD variable
-const redisUrl = process.env.REDIS_URL || "redis://localhost:6379";
-const redisPassword = process.env.REDIS_PASSWORD;
+import { config } from "../config";
+import { logger } from "../logger";
 
 const redisClient = createClient({
-  url: redisUrl,
-  password: redisPassword,
+  url: config.redis.url,
+  password: config.redis.password,
 });
 
 redisClient.on("error", (err) => {
-  console.error("Redis error", err);
+  logger.error({ err }, "Redis error");
 });
 
 export async function connectRedis() {
   if (!redisClient.isOpen) {
     await redisClient.connect();
-    console.log("✅ Redis connected");
+    logger.info("Redis connected");
   }
 }
 

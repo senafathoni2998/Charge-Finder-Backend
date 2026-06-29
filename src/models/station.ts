@@ -37,6 +37,13 @@ export type Station = {
   pricing: StationPricing;
   amenities: string[];
   notes?: string;
+  // Denormalized rating aggregates, kept in sync by recomputeStationRating()
+  // (services/station-review-service.ts) so the list/detail payloads carry ratings
+  // without a per-station join. Optional on write (schema defaults both to 0); always
+  // present on reads.
+  ratingAverage?: number;
+  ratingCount?: number;
+  location?: { type: "Point"; coordinates: [number, number] };
 };
 
 const connectorSchema = new Schema(
@@ -73,6 +80,16 @@ const stationPricingSchema = new Schema(
   { _id: false }
 );
 
+// GeoJSON Point sub-schema (defined separately so the parent schema's TS type
+// inference stays clean and the `type` discriminator isn't misread).
+const pointSchema = new Schema(
+  {
+    type: { type: String, enum: ["Point"], default: "Point" },
+    coordinates: { type: [Number], default: undefined }, // [lng, lat]
+  },
+  { _id: false }
+);
+
 const stationSchema = new Schema({
   name: { type: String, required: true },
   lat: { type: Number, required: true },
@@ -85,6 +102,28 @@ const stationSchema = new Schema({
   pricing: { type: stationPricingSchema, required: true },
   amenities: { type: [String], default: [], required: true },
   notes: { type: String },
+  // Denormalized review aggregates (see recomputeStationRating). ratingAverage is
+  // rounded to one decimal; both default to 0 for stations with no reviews yet.
+  ratingAverage: { type: Number, default: 0, min: 0, max: 5 },
+  ratingCount: { type: Number, default: 0, min: 0 },
+  // GeoJSON point for 2dsphere geo-queries ($geoNear). Kept in sync with lat/lng.
+  location: { type: pointSchema, index: "2dsphere", default: undefined },
 });
+
+// The GeoJSON `location` is populated wherever stations are written:
+//   - admin create/update controllers (station-admin.ts) via toGeoPoint(lat, lng)
+//   - the seed pipeline (ensure-stations.ts)
+//   - the one-off backfill script (scripts/backfill-station-location.ts)
+// (A save hook is intentionally avoided — it would also need to cover insertMany,
+//  and Mongoose's inferred Schema type doesn't expose .pre cleanly here.)
+export const toGeoPoint = (
+  lat: unknown,
+  lng: unknown
+): { type: "Point"; coordinates: [number, number] } | undefined => {
+  if (typeof lat === "number" && typeof lng === "number") {
+    return { type: "Point", coordinates: [lng, lat] };
+  }
+  return undefined;
+};
 
 export default model("Station", stationSchema);

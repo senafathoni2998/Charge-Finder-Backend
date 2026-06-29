@@ -1,3 +1,7 @@
 node_modules
+dist
 .env
 uploads*
+# nodemon.json is no longer committed: it previously held live secrets.
+# Keep local env in an untracked .env (loaded via dotenv).
+nodemon.json

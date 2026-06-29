@@ -28,8 +28,17 @@ const chargingTicketSchema = new Schema(
     startingBatteryPercent: { type: Number, min: 0, max: 100 },
     startedAt: { type: Date },
     completedAt: { type: Date },
+    // True once this ticket has reserved a physical connector port (set when
+    // charging starts). Port release on completion/cancel is gated on this so we
+    // never free a port a ticket never reserved.
+    portReserved: { type: Boolean, default: false },
   },
   { timestamps: true }
 );
+
+// Hot paths: "active ticket(s) for this user (optionally at this station)".
+chargingTicketSchema.index({ user: 1, status: 1, chargingStatus: 1 });
+chargingTicketSchema.index({ user: 1, station: 1, chargingStatus: 1 });
+chargingTicketSchema.index({ station: 1 });
 
 export default model("ChargingTicket", chargingTicketSchema);

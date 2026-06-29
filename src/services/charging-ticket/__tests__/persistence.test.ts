@@ -52,11 +52,16 @@ jest.mock("../../vehicle-battery-service", () => ({
   }),
 }));
 
+jest.mock("../../charging-history-service", () => ({
+  recordChargingHistory: jest.fn(),
+}));
+
 const mongoose = require("mongoose");
 const ChargingTicket = require("../../../models/charging-ticket").default;
 const Station = require("../../../models/station").default;
 const User = require("../../../models/user").default;
 const Vehicle = require("../../../models/vehicle").default;
+const { recordChargingHistory } = require("../../charging-history-service");
 
 describe("charging-ticket/persistence", () => {
   beforeEach(() => {
@@ -230,8 +235,11 @@ describe("charging-ticket/persistence", () => {
       const result = await adjustStationConnectorAvailability("station-123", "CCS2", 1);
 
       expect(Station.updateOne).toHaveBeenCalledWith(
-        { _id: "station-123", "connectors.type": "CCS2" },
-        { $inc: { "connectors.$.availablePorts": 1 } },
+        { _id: "station-123", connectors: { $elemMatch: { type: "CCS2" } } },
+        {
+          $inc: { "connectors.$.availablePorts": 1 },
+          $set: { lastUpdatedISO: expect.any(String) },
+        },
         undefined
       );
       expect(result).toEqual({ ok: true });
@@ -243,12 +251,27 @@ describe("charging-ticket/persistence", () => {
       expect(Station.updateOne).toHaveBeenCalledWith(
         {
           _id: "station-123",
-          "connectors.type": "CCS2",
-          "connectors.availablePorts": { $gt: 0 },
+          connectors: {
+            $elemMatch: { type: "CCS2", availablePorts: { $gt: 0 } },
+          },
         },
-        { $inc: { "connectors.$.availablePorts": -1 } },
+        {
+          $inc: { "connectors.$.availablePorts": -1 },
+          $set: { lastUpdatedISO: expect.any(String) },
+        },
         undefined
       );
+    });
+
+    it("stamps a fresh lastUpdatedISO on every adjustment", async () => {
+      const before = Date.now();
+      await adjustStationConnectorAvailability("station-123", "CCS2", -1);
+
+      const [, update] = Station.updateOne.mock.calls[0];
+      const stamped = Date.parse(update.$set.lastUpdatedISO);
+      expect(Number.isNaN(stamped)).toBe(false);
+      expect(stamped).toBeGreaterThanOrEqual(before - 1000);
+      expect(stamped).toBeLessThanOrEqual(Date.now() + 1000);
     });
 
     it("returns { ok: false, reason: no_available_ports } when decrement fails", async () => {
@@ -285,6 +308,7 @@ describe("charging-ticket/persistence", () => {
           connectorType: "CCS2",
           station: "station-123",
           vehicle: "vehicle-789",
+          portReserved: true,
         }),
       });
       User.updateOne.mockResolvedValue({ matchedCount: 1 });
@@ -319,6 +343,45 @@ describe("charging-ticket/persistence", () => {
       await finalizeChargingTicket("ticket-123", "user-123");
 
       expect(Station.updateOne).toHaveBeenCalled();
+    });
+
+    it("does NOT restore a port for a ticket that never reserved one", async () => {
+      ChargingTicket.findOneAndDelete.mockReturnValue({
+        session: jest.fn().mockResolvedValue({
+          connectorType: "CCS2",
+          station: "station-123",
+          vehicle: "vehicle-789",
+          portReserved: false,
+        }),
+      });
+
+      await finalizeChargingTicket("ticket-123", "user-123");
+
+      expect(Station.updateOne).not.toHaveBeenCalled();
+    });
+
+    it("records history and updates battery inside the transaction when options are provided", async () => {
+      await finalizeChargingTicket("ticket-123", "user-123", {
+        ticketSnapshot: { id: "ticket-123", progressPercent: 100 },
+        outcome: "COMPLETED",
+        endedAt: new Date(),
+        vehicleBatteryPercent: 87,
+      });
+
+      expect(recordChargingHistory).toHaveBeenCalledWith(
+        expect.objectContaining({
+          userId: "user-123",
+          outcome: "COMPLETED",
+          session: mockSession,
+        })
+      );
+      expect(Vehicle.updateOne).toHaveBeenCalledWith(
+        { _id: "vehicle-789" },
+        expect.objectContaining({
+          $set: expect.objectContaining({ batteryPercent: 87 }),
+        }),
+        { session: mockSession }
+      );
     });
 
     it("sets vehicle to IDLE", async () => {

@@ -2,7 +2,8 @@ import { Request, Response, NextFunction } from "express";
 import { validationResult } from "express-validator";
 
 import HttpError from "../../models/http-error";
-import Station from "../../models/station";
+import Station, { toGeoPoint } from "../../models/station";
+import { invalidateStation } from "../../services/station-cache";
 
 /**
  * Creates a new charging station
@@ -46,6 +47,7 @@ const addStation = async (req: Request, res: Response, next: NextFunction) => {
     pricing,
     amenities,
     notes,
+    location: toGeoPoint(lat, lng),
   });
 
   try {
@@ -123,6 +125,11 @@ const updateStation = async (
     station.lng = lng;
   }
 
+  // Keep the GeoJSON location in sync whenever coordinates change.
+  if (lat !== undefined || lng !== undefined) {
+    station.set("location", toGeoPoint(station.lat, station.lng));
+  }
+
   if (typeof address === "string") {
     station.address = address;
   }
@@ -162,6 +169,8 @@ const updateStation = async (
       new HttpError("Updating station failed, please try again.", 500)
     );
   }
+
+  await invalidateStation(stationId);
 
   res.status(200).json({
     message: "Station updated successfully!",
@@ -212,6 +221,8 @@ const deleteStation = async (
       new HttpError("Deleting station failed, please try again.", 500)
     );
   }
+
+  await invalidateStation(stationId);
 
   res.status(200).json({ message: "Station deleted successfully!" });
 };
