@@ -17,6 +17,10 @@ jest.mock("../../controllers/station-controllers", () => ({
   getActiveTicketForStation: jest.fn(),
   deleteStation: jest.fn(),
   getStations: jest.fn(),
+  createOrUpdateStationReview: jest.fn(),
+  getMyStationReview: jest.fn(),
+  deleteMyStationReview: jest.fn(),
+  adminDeleteStationReview: jest.fn(),
 }));
 
 const stationRoutes = require("../station-routes");
@@ -81,6 +85,38 @@ describe("station-routes", () => {
       const routes = getRoutes();
       expect(routes).toContainEqual({ path: "/", methods: ["get"] });
     });
+
+    it("has POST /:stationId/reviews route", () => {
+      const routes = getRoutes();
+      expect(routes).toContainEqual({
+        path: "/:stationId/reviews",
+        methods: ["post"],
+      });
+    });
+
+    it("has GET /:stationId/reviews/me route", () => {
+      const routes = getRoutes();
+      expect(routes).toContainEqual({
+        path: "/:stationId/reviews/me",
+        methods: ["get"],
+      });
+    });
+
+    it("has DELETE /:stationId/reviews route", () => {
+      const routes = getRoutes();
+      expect(routes).toContainEqual({
+        path: "/:stationId/reviews",
+        methods: ["delete"],
+      });
+    });
+
+    it("has DELETE /:stationId/reviews/:reviewId route", () => {
+      const routes = getRoutes();
+      expect(routes).toContainEqual({
+        path: "/:stationId/reviews/:reviewId",
+        methods: ["delete"],
+      });
+    });
   });
 
   describe("admin middleware protection", () => {
@@ -113,6 +149,37 @@ describe("station-routes", () => {
       );
       expect(deleteStationRoute).toBeDefined();
       expect(deleteStationRoute.route.stack.length).toBeGreaterThan(1);
+    });
+
+    it("admin review deletion requires admin", () => {
+      const adminDeleteReviewRoute = stationRoutes.stack.find(
+        (layer: any) =>
+          layer.route?.path === "/:stationId/reviews/:reviewId" &&
+          layer.route?.methods?.delete
+      );
+      expect(adminDeleteReviewRoute).toBeDefined();
+      // Assert adminMiddleware is actually in the handler chain — a length check alone
+      // would still pass if adminMiddleware were dropped (validator + handler = 2 > 1).
+      const handles = adminDeleteReviewRoute.route.stack.map(
+        (layer: any) => layer.handle
+      );
+      expect(handles).toContain(adminMiddleware);
+    });
+
+    it("user-facing review routes are NOT admin-gated", () => {
+      const userReviewRoutes = stationRoutes.stack.filter(
+        (layer: any) =>
+          (layer.route?.path === "/:stationId/reviews" ||
+            layer.route?.path === "/:stationId/reviews/me") &&
+          (layer.route?.methods?.post ||
+            layer.route?.methods?.get ||
+            layer.route?.methods?.delete)
+      );
+      expect(userReviewRoutes.length).toBeGreaterThan(0);
+      for (const layer of userReviewRoutes) {
+        const handles = layer.route.stack.map((l: any) => l.handle);
+        expect(handles).not.toContain(adminMiddleware);
+      }
     });
   });
 
@@ -184,9 +251,9 @@ describe("station-routes", () => {
   });
 
   describe("total route count", () => {
-    it("has exactly 10 routes", () => {
+    it("has exactly 14 routes", () => {
       const routeCount = stationRoutes.stack.filter((layer: any) => layer.route).length;
-      expect(routeCount).toBe(10);
+      expect(routeCount).toBe(14);
     });
   });
 
