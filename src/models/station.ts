@@ -37,6 +37,12 @@ export type Station = {
   pricing: StationPricing;
   amenities: string[];
   notes?: string;
+  // Denormalized rating aggregates, kept in sync by recomputeStationRating()
+  // (services/station-review-service.ts) so the list/detail payloads carry ratings
+  // without a per-station join. Optional on write (schema defaults both to 0); always
+  // present on reads.
+  ratingAverage?: number;
+  ratingCount?: number;
   location?: { type: "Point"; coordinates: [number, number] };
 };
 
@@ -96,6 +102,10 @@ const stationSchema = new Schema({
   pricing: { type: stationPricingSchema, required: true },
   amenities: { type: [String], default: [], required: true },
   notes: { type: String },
+  // Denormalized review aggregates (see recomputeStationRating). ratingAverage is
+  // rounded to one decimal; both default to 0 for stations with no reviews yet.
+  ratingAverage: { type: Number, default: 0, min: 0, max: 5 },
+  ratingCount: { type: Number, default: 0, min: 0 },
   // GeoJSON point for 2dsphere geo-queries ($geoNear). Kept in sync with lat/lng.
   location: { type: pointSchema, index: "2dsphere", default: undefined },
 });
