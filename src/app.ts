@@ -36,6 +36,7 @@ const profileRoutes = require("./routes/profile-routes");
 const vehicleRoutes = require("./routes/vehicle-routes");
 const stationRoutes = require("./routes/station-routes");
 const reservationRoutes = require("./routes/reservation-routes");
+const tripRoutes = require("./routes/trip-routes");
 
 const app = express();
 const server = http.createServer(app);
@@ -135,6 +136,8 @@ app.use("/api/vehicles", vehicleRoutes);
 app.use("/api/stations", stationRoutes);
 
 app.use("/api/reservations", reservationRoutes);
+
+app.use("/api/trips", tripRoutes);
 
 app.use(notFoundHandler);
 
