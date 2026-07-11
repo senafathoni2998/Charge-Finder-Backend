@@ -15,6 +15,7 @@ describe("station-controllers exports", () => {
         cancelCharging: expect.any(Function),
         getStations: expect.any(Function),
         getStationById: expect.any(Function),
+        getStationAvailability: expect.any(Function),
         listStationReviews: expect.any(Function),
         getMyStationReview: expect.any(Function),
         createOrUpdateStationReview: expect.any(Function),
