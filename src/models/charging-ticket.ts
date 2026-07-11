@@ -13,6 +13,12 @@ const chargingTicketSchema = new Schema(
     },
     ticketKwh: { type: Number, min: 0 },
     targetBatteryPercent: { type: Number, min: 0, max: 100 },
+    // Optional "notify me at this battery %" threshold (1–99). When the live
+    // batteryPercentage crosses it during charging, the progress timer emits a
+    // one-shot "target-reached" WebSocket event. notifyAtReachedAt is the once-only
+    // guard: it's null until the notification is claimed/sent, then a timestamp.
+    notifyAtPercent: { type: Number, min: 1, max: 99, default: null },
+    notifyAtReachedAt: { type: Date, default: null },
     status: {
       type: String,
       enum: ["REQUESTED", "PAID", "CANCELLED"],
