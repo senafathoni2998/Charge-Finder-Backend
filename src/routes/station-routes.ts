@@ -96,6 +96,7 @@ router.post(
     check("stationId").not().isEmpty(),
     check("connectorType").optional().isIn(["CCS2", "Type2", "CHAdeMO"]),
     check("vehicleId").optional().not().isEmpty(),
+    check("notifyAtPercent").optional({ values: "falsy" }).isInt({ min: 1, max: 99 }),
   ],
   stationControllers.startCharging
 );
