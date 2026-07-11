@@ -75,6 +75,69 @@ export const broadcastChargingProgress = (
   }
 };
 
+/**
+ * True when a charging session with a "notify me at X%" threshold has reached it.
+ * Pure so the crossing rule is unit-testable in isolation; the once-only guarantee
+ * comes from the atomic DB claim at the call site, not from this predicate.
+ */
+export const shouldNotifyTargetReached = (
+  notifyAtPercent: unknown,
+  batteryPercentage: unknown,
+  startingBatteryPercent?: unknown
+): boolean =>
+  typeof notifyAtPercent === "number" &&
+  Number.isFinite(notifyAtPercent) &&
+  notifyAtPercent > 0 &&
+  typeof batteryPercentage === "number" &&
+  Number.isFinite(batteryPercentage) &&
+  batteryPercentage >= notifyAtPercent &&
+  // Suppress the alert when the battery was ALREADY at/above the threshold when
+  // charging started — it never "reached" the threshold during this session.
+  !(
+    typeof startingBatteryPercent === "number" &&
+    Number.isFinite(startingBatteryPercent) &&
+    startingBatteryPercent >= notifyAtPercent
+  );
+
+// Atomically claims and broadcasts a one-shot "target-reached" event when a session
+// with a notify-at threshold has crossed it. The claim (notifyAtReachedAt null ->
+// timestamp) guarantees exactly-once delivery across ticks, a reconnect-spawned
+// timer, and the completion paths (all of which call this before the ticket is
+// finalized/deleted).
+const broadcastTargetReachedIfCrossed = async (
+  ticketId: string,
+  key: SubscriberKey,
+  snapshot: Record<string, unknown>
+): Promise<void> => {
+  const notifyAtPercent = snapshot.notifyAtPercent;
+  const batteryPercentage = snapshot.batteryPercentage;
+  if (
+    !shouldNotifyTargetReached(
+      notifyAtPercent,
+      batteryPercentage,
+      snapshot.startingBatteryPercent
+    )
+  ) {
+    return;
+  }
+  try {
+    const claim = await ChargingTicket.updateOne(
+      { _id: ticketId, notifyAtReachedAt: null, notifyAtPercent: { $gt: 0 } },
+      { $set: { notifyAtReachedAt: new Date() } }
+    );
+    if (claim.modifiedCount === 1) {
+      broadcastChargingProgress(key, {
+        type: "target-reached",
+        notifyAtPercent,
+        batteryPercentage,
+        ticket: snapshot,
+      });
+    }
+  } catch (err) {
+    // Non-fatal — a later tick retries the claim.
+  }
+};
+
 const updateTicketProgressSnapshot = <T extends Record<string, unknown>>(
   snapshot: T,
   progressPercent: number
@@ -169,6 +232,10 @@ export const ensureChargingProgressTimer = (ticket: any) => {
         ).batteryPercentage;
 
         try {
+          // Fire a pending "target-reached" BEFORE finalizing (which deletes the
+          // ticket) so a threshold crossed in the same tick as completion — common
+          // for high thresholds / short charges — isn't silently dropped.
+          await broadcastTargetReachedIfCrossed(ticketId, key, completedTicket);
           await finalizeChargingTicket(ticketId, userId);
           if (vehicleId && typeof completedBatteryPercentage === "number") {
             void updateVehicleBatteryPercentage(
@@ -241,6 +308,8 @@ export const ensureChargingProgressTimer = (ticket: any) => {
         type: "progress",
         ticket: ticketSnapshot,
       });
+
+      await broadcastTargetReachedIfCrossed(ticketId, key, ticketSnapshot);
     };
 
     const intervalId = setInterval(tick, CHARGING_PROGRESS_TICK_MS);
@@ -367,6 +436,13 @@ export const initChargingProgressWebSocketServer = (
         ).batteryPercentage;
 
         try {
+          // Also deliver a pending "target-reached" on the reconnect-completion
+          // recovery path, before the ticket is finalized/deleted.
+          await broadcastTargetReachedIfCrossed(
+            activeTicket.id,
+            key,
+            completedTicket as Record<string, unknown>
+          );
           await finalizeChargingTicket(activeTicket.id, user.id);
           if (ticketVehicleId && typeof completedBatteryPercentage === "number") {
             void updateVehicleBatteryPercentage(

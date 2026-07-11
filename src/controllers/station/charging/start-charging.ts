@@ -8,6 +8,7 @@ import Vehicle from "../../../models/vehicle";
 import {
   broadcastChargingProgress,
   buildChargingProgressKey,
+  clearChargingProgressTimer,
   ensureChargingProgressTimer,
 } from "../../../realtime/charging-progress";
 import {
@@ -46,8 +47,20 @@ const startCharging = async (
     );
   }
 
-  const { stationId, connectorType, vehicleId } = req.body;
+  const { stationId, connectorType, vehicleId, notifyAtPercent } = req.body;
   const sessionUserId = req.user?.id;
+
+  // Optional "notify me at this battery %" threshold. Normalized to an integer in
+  // [1, 99], or null when absent/invalid (notifications are opt-in).
+  const parsedNotifyAtPercent =
+    notifyAtPercent === undefined ||
+    notifyAtPercent === null ||
+    notifyAtPercent === ""
+      ? null
+      : (() => {
+          const n = Math.round(Number(notifyAtPercent));
+          return Number.isFinite(n) && n >= 1 && n <= 99 ? n : null;
+        })();
 
   if (!sessionUserId) {
     return next(new HttpError("Authentication required.", 401));
@@ -323,6 +336,24 @@ const startCharging = async (
   if (typeof targetBatteryPercent === "number") {
     ticket.set("targetBatteryPercent", targetBatteryPercent);
   }
+  // Cap the notify-at threshold to the battery % this session can actually reach
+  // (its target). A threshold above the reachable target could never fire as a
+  // distinct event; capping makes the alert deliverable (at/just before completion).
+  let notifyThreshold = parsedNotifyAtPercent;
+  if (
+    notifyThreshold != null &&
+    typeof targetBatteryPercent === "number" &&
+    Number.isFinite(targetBatteryPercent)
+  ) {
+    const reachableTarget = Math.round(targetBatteryPercent);
+    if (notifyThreshold > reachableTarget) {
+      notifyThreshold = reachableTarget >= 1 ? reachableTarget : null;
+    }
+  }
+  // Set the notify-at threshold and (re)arm the one-shot guard for this session so
+  // a restart can notify again.
+  ticket.set("notifyAtPercent", notifyThreshold);
+  ticket.set("notifyAtReachedAt", null);
 
   try {
     await ticket.save();
@@ -366,6 +397,10 @@ const startCharging = async (
     }
   );
 
+  // Clear any existing timer first so a restart (e.g. with a changed notify-at
+  // threshold) rebuilds the snapshot the timer reads from, instead of keeping a
+  // stale one — ensureChargingProgressTimer no-ops when a timer already exists.
+  clearChargingProgressTimer(ticket.id);
   ensureChargingProgressTimer(ticket);
 
   res.status(200).json({
