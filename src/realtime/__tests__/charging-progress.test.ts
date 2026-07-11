@@ -4,6 +4,7 @@ import {
   broadcastChargingProgress,
   clearChargingProgressTimer,
   ensureChargingProgressTimer,
+  shouldNotifyTargetReached,
 } from "../charging-progress";
 
 // Mock dependencies
@@ -422,5 +423,40 @@ describe("charging-progress edge cases", () => {
       stationId.toString()
     );
     expect(key).toBe("user-obj:station-obj");
+  });
+
+  describe("shouldNotifyTargetReached", () => {
+    it("fires when the live battery has reached the threshold", () => {
+      expect(shouldNotifyTargetReached(80, 80)).toBe(true);
+      expect(shouldNotifyTargetReached(80, 92)).toBe(true);
+    });
+
+    it("does not fire before the threshold is reached", () => {
+      expect(shouldNotifyTargetReached(80, 79)).toBe(false);
+    });
+
+    it("does not fire without a valid threshold", () => {
+      expect(shouldNotifyTargetReached(null, 90)).toBe(false);
+      expect(shouldNotifyTargetReached(0, 90)).toBe(false);
+      expect(shouldNotifyTargetReached(undefined, 90)).toBe(false);
+    });
+
+    it("does not fire without a numeric battery percentage", () => {
+      expect(shouldNotifyTargetReached(80, undefined)).toBe(false);
+      expect(shouldNotifyTargetReached(80, null)).toBe(false);
+      expect(shouldNotifyTargetReached(80, Number.NaN)).toBe(false);
+    });
+
+    it("suppresses the alert when the battery already started at/above the threshold", () => {
+      // Started at 85% with a notify-at of 80% — never "reached" 80 this session.
+      expect(shouldNotifyTargetReached(80, 90, 85)).toBe(false);
+      expect(shouldNotifyTargetReached(80, 80, 80)).toBe(false);
+    });
+
+    it("fires when the battery started below the threshold and crossed it", () => {
+      expect(shouldNotifyTargetReached(80, 80, 30)).toBe(true);
+      // Unknown starting battery: don't suppress.
+      expect(shouldNotifyTargetReached(80, 85)).toBe(true);
+    });
   });
 });
