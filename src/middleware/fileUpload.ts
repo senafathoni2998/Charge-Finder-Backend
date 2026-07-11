@@ -2,6 +2,7 @@ import fs from "fs";
 import multer from "multer";
 import { v4 as uuidv4 } from "uuid";
 import { getImageUploadDir } from "../utils/image-paths";
+import HttpError from "../models/http-error";
 
 const MIME_TYPE_MAP = {
   "image/png": "png",
@@ -41,7 +42,10 @@ const fileUpload = multer({
       cb(null, true);
       return;
     }
-    cb(new Error("Invalid mimetype!"));
+    // A rejected file type is a client error, not a server fault — surface it as a
+    // 415 (HttpError.code) so the error handler returns a clean 4xx with this
+    // message instead of falling through to a logged, generic 500.
+    cb(new HttpError("Only PNG and JPG images are allowed.", 415));
   },
 });
 

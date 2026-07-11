@@ -6,6 +6,13 @@ jest.mock("../../middleware/authMiddleware", () => ({
   adminMiddleware: jest.fn((req: any, res: any, next: any) => next()),
 }));
 
+// fileUpload pulls in `uuid` (ESM-only) which jest can't transform; stub it out.
+jest.mock("../../middleware/fileUpload", () => ({
+  fileUpload: {
+    single: jest.fn(() => (req: any, res: any, next: any) => next()),
+  },
+}));
+
 jest.mock("../../controllers/station-controllers", () => ({
   addStation: jest.fn(),
   updateStation: jest.fn(),

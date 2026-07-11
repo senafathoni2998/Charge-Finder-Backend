@@ -1,6 +1,8 @@
 import express from "express";
 import { check } from "express-validator";
 import { adminMiddleware } from "../middleware/authMiddleware";
+import { fileUpload } from "../middleware/fileUpload";
+import { normalizeStationBody } from "../middleware/normalizeStationBody";
 
 const router = express.Router();
 
@@ -9,6 +11,10 @@ const stationControllers = require("../controllers/station-controllers");
 router.post(
   "/add-station",
   adminMiddleware,
+  // Accepts the optional feature image as multipart; normalizeStationBody parses
+  // the JSON-encoded structured fields so the validators below run unchanged.
+  fileUpload.single("featuredImage"),
+  normalizeStationBody,
   [
     check("name").not().isEmpty(),
     check("lat").not().isEmpty(),
@@ -38,6 +44,8 @@ router.post(
 router.patch(
   "/update-station",
   adminMiddleware,
+  fileUpload.single("featuredImage"),
+  normalizeStationBody,
   [
     check("stationId").not().isEmpty(),
     check("name").optional().not().isEmpty(),
@@ -63,6 +71,7 @@ router.patch(
     check("pricing.ultraFastPerKwh").optional().isFloat({ min: 0 }).toFloat(),
     check("amenities").optional().isArray(),
     check("notes").optional().isString(),
+    check("removeFeaturedImage").optional().isBoolean(),
   ],
   stationControllers.updateStation
 );

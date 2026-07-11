@@ -34,6 +34,11 @@ export type Station = {
   status: Availability;
   lastUpdatedISO: string;
   photos: StationPhoto[];
+  // Public path of the station's uploaded feature (hero) image, e.g.
+  // "uploads/images/2026/07/<uuid>.png". Optional — falls back to the gradient
+  // `photos` placeholders on the client when absent. Stored/cleaned up with the
+  // same helpers as the user profile image (utils/image-paths.ts).
+  featuredImage?: string | null;
   pricing: StationPricing;
   amenities: string[];
   notes?: string;
@@ -99,6 +104,9 @@ const stationSchema = new Schema({
   status: { type: String, enum: ["AVAILABLE", "BUSY", "OFFLINE"], required: true },
   lastUpdatedISO: { type: String, required: true },
   photos: { type: [stationPhotoSchema], default: [], required: true },
+  // Uploaded feature-image public path (see the Station type). Nullable so the
+  // update controller can clear it; absent on stations that never set one.
+  featuredImage: { type: String, default: undefined },
   pricing: { type: stationPricingSchema, required: true },
   amenities: { type: [String], default: [], required: true },
   notes: { type: String },
