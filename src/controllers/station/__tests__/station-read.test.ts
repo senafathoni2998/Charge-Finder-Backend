@@ -1,4 +1,8 @@
-import { getStations, getStationById } from "../station-read";
+import {
+  getStations,
+  getStationById,
+  getStationAvailability,
+} from "../station-read";
 import Station from "../../../models/station";
 import ChargingTicket from "../../../models/charging-ticket";
 import HttpError from "../../../models/http-error";
@@ -243,5 +247,111 @@ describe("station-read controllers", () => {
       station: { id: "station-1", isChargingHere: true },
     });
     expect(next).not.toHaveBeenCalled();
+  });
+
+  describe("getStationAvailability", () => {
+    it("rejects an invalid station id with 422 without a DB read", async () => {
+      isValidMock.mockReturnValue(false);
+      const req = { params: { stationId: "nope" } };
+      const res = buildRes();
+      const next = jest.fn();
+
+      await getStationAvailability(req as any, res as any, next);
+
+      const error = next.mock.calls[0][0] as HttpError;
+      expect(error.code).toBe(422);
+      expect(StationMock.findById).not.toHaveBeenCalled();
+    });
+
+    it("returns 404 when the station is missing", async () => {
+      StationMock.findById.mockReturnValue({
+        lean: jest.fn().mockResolvedValue(null),
+      });
+      const req = { params: { stationId: "507f1f77bcf86cd799439011" } };
+      const res = buildRes();
+      const next = jest.fn();
+
+      await getStationAvailability(req as any, res as any, next);
+
+      const error = next.mock.calls[0][0] as HttpError;
+      expect(error.code).toBe(404);
+    });
+
+    it("returns projected connector availability from an uncached lean read", async () => {
+      StationMock.findById.mockReturnValue({
+        lean: jest.fn().mockResolvedValue({
+          _id: "507f1f77bcf86cd799439011",
+          status: "BUSY",
+          lastUpdatedISO: "2026-01-01T00:00:00.000Z",
+          connectors: [
+            { type: "CCS2", powerKW: 100, ports: 4, availablePorts: 2, _id: "a" },
+            { type: "Type2", powerKW: 22, ports: 2, availablePorts: 0, _id: "b" },
+          ],
+        }),
+      });
+      const req = { params: { stationId: "507f1f77bcf86cd799439011" } };
+      const res = buildRes();
+      const next = jest.fn();
+
+      await getStationAvailability(req as any, res as any, next);
+
+      expect(next).not.toHaveBeenCalled();
+      expect(res.status).toHaveBeenCalledWith(200);
+      expect(res.json.mock.calls[0][0].availability).toEqual({
+        stationId: "507f1f77bcf86cd799439011",
+        status: "BUSY",
+        lastUpdatedISO: "2026-01-01T00:00:00.000Z",
+        connectors: [
+          { type: "CCS2", powerKW: 100, ports: 4, availablePorts: 2 },
+          { type: "Type2", powerKW: 22, ports: 2, availablePorts: 0 },
+        ],
+      });
+      // Availability-only projection — no full document, no cache.
+      expect(StationMock.findById).toHaveBeenCalledWith(
+        "507f1f77bcf86cd799439011",
+        { status: 1, lastUpdatedISO: 1, connectors: 1 }
+      );
+    });
+
+    it("maps a DB failure to 500", async () => {
+      StationMock.findById.mockReturnValue({
+        lean: jest.fn().mockRejectedValue(new Error("db down")),
+      });
+      const req = { params: { stationId: "507f1f77bcf86cd799439011" } };
+      const res = buildRes();
+      const next = jest.fn();
+
+      await getStationAvailability(req as any, res as any, next);
+
+      const error = next.mock.calls[0][0] as HttpError;
+      expect(error.code).toBe(500);
+    });
+
+    it("clamps availablePorts into [0, ports] so the API never over-reports", async () => {
+      StationMock.findById.mockReturnValue({
+        lean: jest.fn().mockResolvedValue({
+          _id: "507f1f77bcf86cd799439011",
+          status: "AVAILABLE",
+          lastUpdatedISO: "2026-01-01T00:00:00.000Z",
+          connectors: [
+            { type: "CCS2", powerKW: 100, ports: 1, availablePorts: 3 },
+            { type: "Type2", powerKW: 22, ports: 2, availablePorts: -1 },
+          ],
+        }),
+      });
+      const res = buildRes();
+      const next = jest.fn();
+
+      await getStationAvailability(
+        { params: { stationId: "507f1f77bcf86cd799439011" } } as any,
+        res as any,
+        next
+      );
+
+      expect(res.json.mock.calls[0][0].availability.connectors).toEqual([
+        { type: "CCS2", powerKW: 100, ports: 1, availablePorts: 1 },
+        { type: "Type2", powerKW: 22, ports: 2, availablePorts: 0 },
+      ]);
+    });
   });
 });
