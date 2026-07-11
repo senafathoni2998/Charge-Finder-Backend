@@ -11,7 +11,11 @@ export {
   completeCharging,
   cancelCharging,
 } from "./station/station-charging";
-export { getStations, getStationById } from "./station/station-read";
+export {
+  getStations,
+  getStationById,
+  getStationAvailability,
+} from "./station/station-read";
 export {
   listStationReviews,
   getMyStationReview,

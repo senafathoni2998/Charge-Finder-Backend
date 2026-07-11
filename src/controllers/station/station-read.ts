@@ -433,4 +433,73 @@ const getStationById = async (
   });
 };
 
-export { getStations, getStationById };
+/**
+ * Returns just a station's live connector availability (free/occupied ports) and
+ * status.
+ *
+ * @purpose Powers the client's live-availability polling on the station detail page.
+ * @caching Intentionally UNCACHED — reads the current connector counts straight from
+ *   the DB. availablePorts changes on every start/complete/cancel-charging via the
+ *   atomic port accounting (services/charging-ticket/persistence.ts), and the
+ *   charging flow does not invalidate the 30s station cache, so a cached read would
+ *   lag. This lean, fields-projected read is cheap enough to poll.
+ * @params stationId - Station ID from the URL.
+ * @returns { availability: { stationId, status, lastUpdatedISO, connectors:[{type,powerKW,ports,availablePorts}] } }
+ */
+const getStationAvailability = async (
+  req: Request,
+  res: Response,
+  next: NextFunction,
+) => {
+  const { stationId } = req.params;
+
+  if (!mongoose.Types.ObjectId.isValid(stationId)) {
+    return next(new HttpError("Invalid station id.", 422));
+  }
+
+  let station;
+  try {
+    station = await Station.findById(stationId, {
+      status: 1,
+      lastUpdatedISO: 1,
+      connectors: 1,
+    }).lean();
+  } catch (err) {
+    return next(
+      new HttpError(
+        "Fetching availability failed, please try again later.",
+        500,
+      ),
+    );
+  }
+
+  if (!station) {
+    return next(new HttpError("Station not found.", 404));
+  }
+
+  const connectors = Array.isArray(station.connectors)
+    ? station.connectors.map((connector) => {
+        const ports = Math.max(0, Number(connector.ports) || 0);
+        // Clamp to [0, ports] so the availability API never reports a nonsensical
+        // count (e.g. availablePorts > ports), which would make the client's
+        // "in use = ports - availablePorts" go negative. This is defensive against
+        // rare over-release on stations misconfigured with duplicate connector types.
+        const availablePorts = Math.min(
+          Math.max(0, Number(connector.availablePorts) || 0),
+          ports,
+        );
+        return { type: connector.type, powerKW: connector.powerKW, ports, availablePorts };
+      })
+    : [];
+
+  res.status(200).json({
+    availability: {
+      stationId: String(station._id),
+      status: station.status,
+      lastUpdatedISO: station.lastUpdatedISO,
+      connectors,
+    },
+  });
+};
+
+export { getStations, getStationById, getStationAvailability };
