@@ -155,6 +155,33 @@ describe("fileUpload middleware", () => {
       expect(limits.fileSize).toBe(500000);
     });
   });
+
+  describe("fileFilter behavior", () => {
+    const getFilter = () => (fileUpload as any).fileFilter;
+
+    it.each(["image/png", "image/jpeg", "image/jpg"])(
+      "accepts %s",
+      (mimetype) => {
+        const cb = jest.fn();
+        getFilter()({} as any, { mimetype } as Express.Multer.File, cb);
+        expect(cb).toHaveBeenCalledWith(null, true);
+      }
+    );
+
+    it.each(["image/webp", "image/gif", "image/svg+xml", "application/pdf"])(
+      "rejects %s with a 415 HttpError (a client error, not a 500)",
+      (mimetype) => {
+        const cb = jest.fn();
+        getFilter()({} as any, { mimetype } as Express.Multer.File, cb);
+        expect(cb).toHaveBeenCalledTimes(1);
+        const err = cb.mock.calls[0][0];
+        expect(err).toBeInstanceOf(Error);
+        expect(err.code).toBe(415);
+        // No second "accept" argument — the file is rejected.
+        expect(cb.mock.calls[0][1]).toBeUndefined();
+      }
+    );
+  });
 });
 
 describe("fileUpload MIME type validation", () => {
