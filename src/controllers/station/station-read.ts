@@ -122,6 +122,30 @@ type StationPayload = Record<string, unknown> & {
 const DEFAULT_NEARBY_LIMIT = 300;
 const DEFAULT_LIST_LIMIT = 500;
 
+// HTTP caching directives for the public station read endpoints. These let the
+// browser, the PWA service worker, and any CDN reuse a recent response and
+// revalidate it cheaply (Express attaches a weak ETag automatically) — which is
+// what makes the frontend's offline "last-known stations" and fast repeat loads
+// work without hammering the DB.
+//
+// A logged-in user's response carries per-user `isChargingHere` flags, so those
+// responses are marked `private` and made to vary on the auth cookie: a shared
+// cache must never hand one user's flags to another, and must not serve a cached
+// anonymous response to a signed-in user (or vice versa).
+const setStationReadCacheHeaders = (
+  res: Response,
+  personalized: boolean,
+): void => {
+  // Append (not overwrite) so the CORS layer's `Vary: Origin` is preserved.
+  res.vary("Cookie");
+  res.set(
+    "Cache-Control",
+    personalized
+      ? "private, max-age=15, stale-while-revalidate=60"
+      : "public, max-age=30, stale-while-revalidate=300",
+  );
+};
+
 // Shapes a station document from the $geoNear aggregation into the API payload:
 // renames _id -> id, derives distanceKm from the geo distance, sets isChargingHere,
 // and drops internal fields (__v, location).
@@ -342,6 +366,7 @@ const getStations = async (
     });
   }
 
+  setStationReadCacheHeaders(res, Boolean(sessionUserId));
   res.json({
     stations: stationsPayload,
   });
@@ -425,6 +450,7 @@ const getStationById = async (
     }
   }
 
+  setStationReadCacheHeaders(res, Boolean(sessionUserId));
   res.status(200).json({
     station: {
       ...stationData,
@@ -492,6 +518,10 @@ const getStationAvailability = async (
       })
     : [];
 
+  // Availability must never be served stale: it changes on every
+  // start/complete/cancel-charging and the client polls it live. Opt out of every
+  // cache (browser, SW, CDN) so a poll always reflects current connector counts.
+  res.set("Cache-Control", "no-store");
   res.status(200).json({
     availability: {
       stationId: String(station._id),
