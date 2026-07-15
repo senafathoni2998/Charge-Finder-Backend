@@ -51,6 +51,8 @@ const StationMock = Station as unknown as jest.Mock & {
 const buildRes = () => ({
   status: jest.fn().mockReturnThis(),
   json: jest.fn(),
+  set: jest.fn().mockReturnThis(),
+  vary: jest.fn().mockReturnThis(),
 });
 
 describe("getStations demo-station seeding (enableDemoData)", () => {
