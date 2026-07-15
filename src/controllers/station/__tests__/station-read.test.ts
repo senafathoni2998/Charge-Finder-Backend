@@ -49,12 +49,29 @@ jest.mock("../../../models/charging-ticket", () => {
 type MockResponse = {
   status: jest.Mock;
   json: jest.Mock;
+  set: jest.Mock;
+  vary: jest.Mock;
 };
 
 const buildRes = (): MockResponse => ({
   status: jest.fn().mockReturnThis(),
   json: jest.fn(),
+  set: jest.fn().mockReturnThis(),
+  vary: jest.fn().mockReturnThis(),
 });
+
+// Pulls the last Cache-Control value passed to res.set(...) across its call forms:
+// res.set("Cache-Control", value) or res.set({ "Cache-Control": value }).
+const cacheControlOf = (res: MockResponse): string | undefined => {
+  for (let i = res.set.mock.calls.length - 1; i >= 0; i -= 1) {
+    const [a, b] = res.set.mock.calls[i];
+    if (a === "Cache-Control" && typeof b === "string") return b;
+    if (a && typeof a === "object" && typeof a["Cache-Control"] === "string") {
+      return a["Cache-Control"];
+    }
+  }
+  return undefined;
+};
 
 const StationMock = Station as unknown as jest.Mock & {
   find: jest.Mock;
@@ -130,6 +147,12 @@ describe("station-read controllers", () => {
     expect(payload.stations[1].isChargingHere).toBe(false);
     expect(ChargingTicketMock.find).not.toHaveBeenCalled();
     expect(next).not.toHaveBeenCalled();
+    // Anonymous list is publicly cacheable, and varies on the auth cookie so a
+    // signed-in user is never served this anonymous response from a shared cache.
+    expect(cacheControlOf(res)).toBe(
+      "public, max-age=30, stale-while-revalidate=300"
+    );
+    expect(res.vary).toHaveBeenCalledWith("Cookie");
   });
 
   it("flags stations where the user is actively charging", async () => {
@@ -173,6 +196,12 @@ describe("station-read controllers", () => {
     expect(stationOne?.isChargingHere).toBe(true);
     expect(stationTwo?.isChargingHere).toBe(false);
     expect(next).not.toHaveBeenCalled();
+    // A personalized response (per-user isChargingHere) must be private so no
+    // shared cache leaks one user's charging flags to another.
+    expect(cacheControlOf(res)).toBe(
+      "private, max-age=15, stale-while-revalidate=60"
+    );
+    expect(res.vary).toHaveBeenCalledWith("Cookie");
   });
 
   it("uses a $geoNear aggregation (not a full scan) when location is provided", async () => {
@@ -247,6 +276,9 @@ describe("station-read controllers", () => {
       station: { id: "station-1", isChargingHere: true },
     });
     expect(next).not.toHaveBeenCalled();
+    expect(cacheControlOf(res)).toBe(
+      "private, max-age=15, stale-while-revalidate=60"
+    );
   });
 
   describe("getStationAvailability", () => {
@@ -311,6 +343,8 @@ describe("station-read controllers", () => {
         "507f1f77bcf86cd799439011",
         { status: 1, lastUpdatedISO: 1, connectors: 1 }
       );
+      // Live availability must be uncacheable so a poll never returns stale ports.
+      expect(cacheControlOf(res)).toBe("no-store");
     });
 
     it("maps a DB failure to 500", async () => {
